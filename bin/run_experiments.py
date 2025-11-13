@@ -17,7 +17,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from synchronous_repeated_detection import import_data, filter_RTs
-from approaches import ApproachFactory, Approach, CoRetweetsApproach
+from approaches import ApproachFactory, Approach
+from approaches.coretweets import CoRetweetsApproach
 
 
 # Default datasets to process
@@ -88,9 +89,11 @@ def process_dataset_approach(dataset: str, approach: Approach,
 
     # Prepare data based on approach needs
     if approach.needs_filtered_data():
-        # Need to filter RTs based on coretweets first
+        # Need to filter RTs based on coretweets first (with transparent caching)
         coretweets_approach = CoRetweetsApproach(approach.window_sec, approach.min_coactions)
-        pairs_coretweets = coretweets_approach.compute_pairs_scores(RTs)
+        pairs_coretweets = coretweets_approach.compute_pairs_scores(
+            RTs, processed_dir=processed_dir
+        )
 
         if not pairs_coretweets:
             return None
@@ -100,18 +103,19 @@ def process_dataset_approach(dataset: str, approach: Approach,
     else:
         RTs_to_use = RTs
 
-    # Compute pairs scores using the approach
-    pairs_scores = approach.compute_pairs_scores(RTs_to_use)
+    # Compute suspicious users using the approach
+    suspicious_users = approach.get_suspicious(RTs_to_use)
 
-    if not pairs_scores:
+    if not suspicious_users:
         return None
 
     # Save results with metadata from approach
     results = {
         'dataset': dataset,
-        'pairs_scores': pairs_scores,
+        'suspicious_users': suspicious_users,
         'io_users': io_users,
-        'num_pairs': len(pairs_scores),
+        'num_suspicious_groups': len(suspicious_users),
+        'num_suspicious_users': sum(len(group) for group in suspicious_users),
         **approach.get_metadata()  # Includes all approach configuration
     }
 

@@ -60,6 +60,57 @@ class Approach(ABC):
             'min_coactions': self.min_coactions,
         }
 
+    def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
+        """
+        Get ordered list of suspicious users grouped by score level.
+
+        Returns a list of lists where each inner list contains users from pairs
+        at the same score level, ordered from highest to lowest scores.
+        Each user appears only once (in their highest-scoring group).
+
+        Args:
+            RTs: List of (user_id, tweet_id, timestamp) tuples
+            **kwargs: Additional approach-specific parameters
+
+        Returns:
+            List of lists: [[users_at_highest_score], [users_at_next_score], ...]
+        """
+        # Compute pair scores using the approach's method
+        pairs_scores = self.compute_pairs_scores(RTs, **kwargs)
+
+        if not pairs_scores:
+            return []
+
+        # Sort pairs by score in descending order
+        sorted_pairs = sorted(pairs_scores.items(), key=lambda x: x[1], reverse=True)
+
+        # Track users already seen to avoid duplicates
+        users_seen = set()
+        ordered_list_of_suspicious_users = []
+
+        idx = 0
+        n = len(sorted_pairs)
+
+        # Process pairs in score blocks (all pairs with same score)
+        while idx < n:
+            current_score = sorted_pairs[idx][1]
+            block_users = set()
+
+            # Collect all users from pairs with the same score
+            while idx < n and sorted_pairs[idx][1] == current_score:
+                pair, _ = sorted_pairs[idx]
+                for user in pair:
+                    if user not in users_seen and user not in block_users:
+                        block_users.add(user)
+                idx += 1
+
+            # Add this score block's users as a new list
+            if block_users:
+                ordered_list_of_suspicious_users.append(sorted(block_users))
+                users_seen.update(block_users)
+
+        return ordered_list_of_suspicious_users
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(window_sec={self.window_sec}, min_coactions={self.min_coactions})"
 

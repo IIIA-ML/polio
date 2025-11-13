@@ -75,21 +75,25 @@ def load_all_results(results_dir):
     return dict(all_results)
 
 
-def compute_area_under_curve(pairs_scores, io_users):
+def compute_area_under_curve(suspicious_users, io_users):
     """
     Compute normalized area under the detection curve.
 
     Returns area as a fraction of the ideal area (higher is better).
+
+    Args:
+        suspicious_users: List of lists of user IDs grouped by score level
+        io_users: Set/list of known inauthentic user IDs
     """
-    if not pairs_scores:
+    if not suspicious_users:
         return 0.0
 
-    x_vals, y_vals = _compute_curve(pairs_scores, set(io_users))
+    x_vals, y_vals = _compute_curve(suspicious_users, set(io_users))
 
-    # Total users and IO users in the pairs
-    users_in_pairs = set([u for p in pairs_scores.keys() for u in p])
-    total_users = len(users_in_pairs)
-    total_io = len(users_in_pairs & set(io_users))
+    # Total users and IO users in suspicious_users
+    users_in_suspicious = set([u for group in suspicious_users for u in group])
+    total_users = len(users_in_suspicious)
+    total_io = len(users_in_suspicious & set(io_users))
 
     if total_io == 0:
         return 0.0
@@ -116,9 +120,9 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
 
     io_users = set(dataset_results['coretweets']['io_users'])
 
-    # Extract pairs_scores for each method
+    # Extract suspicious_users for each method
     methods = {
-        APPROACHES[approach]: dataset_results[approach]['pairs_scores']
+        APPROACHES[approach]: dataset_results[approach]['suspicious_users']
         for approach in APPROACHES.keys()
     }
 
@@ -126,7 +130,7 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(f'Method Comparison - {dataset_name}', fontsize=16, fontweight='bold')
 
-    baseline_scores = methods['Co-retweets']
+    baseline_suspicious = methods['Co-retweets']
 
     plot_configs = [
         ('Ignoring Tweet', methods['Ignoring Tweet'], axes[0, 0]),
@@ -134,10 +138,10 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
         ('Same Tweet Same Time', methods['Same Tweet Same Time'], axes[1, 0]),
     ]
 
-    for method_name, pairs_scores, ax in plot_configs:
+    for method_name, suspicious_users, ax in plot_configs:
         # Compute curves
-        x1, y1 = _compute_curve(pairs_scores, io_users)
-        x2, y2 = _compute_curve(baseline_scores, io_users)
+        x1, y1 = _compute_curve(suspicious_users, io_users)
+        x2, y2 = _compute_curve(baseline_suspicious, io_users)
 
         # Calculate differences
         diff = y1 - y2
@@ -182,12 +186,12 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
 
     # Get dataset info from coretweets results
     coretweet_result = dataset_results['coretweets']
-    users_in_pairs = set([u for p in coretweet_result['pairs_scores'].keys() for u in p])
+    users_in_suspicious = set([u for group in coretweet_result['suspicious_users'] for u in group])
 
     summary_text += f"\n\nDataset Info:\n"
-    summary_text += f"Total users: {len(users_in_pairs)}\n"
-    summary_text += f"IO users: {len(users_in_pairs & io_users)}\n"
-    summary_text += f"Pairs: {coretweet_result['num_pairs']}\n"
+    summary_text += f"Total users: {len(users_in_suspicious)}\n"
+    summary_text += f"IO users: {len(users_in_suspicious & io_users)}\n"
+    summary_text += f"Score groups: {coretweet_result['num_suspicious_groups']}\n"
 
     ax.text(0.1, 0.9, summary_text, transform=ax.transAxes,
             fontsize=10, verticalalignment='top', family='monospace',
@@ -383,7 +387,7 @@ def main():
             io_users = set(dataset_results['coretweets']['io_users'])
             scores = {
                 APPROACHES[approach]: compute_area_under_curve(
-                    dataset_results[approach]['pairs_scores'], io_users
+                    dataset_results[approach]['suspicious_users'], io_users
                 )
                 for approach in APPROACHES.keys()
             }
