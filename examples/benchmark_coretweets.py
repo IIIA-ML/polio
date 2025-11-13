@@ -57,7 +57,7 @@ def compare_approaches(processed_dir, window_sec=60, min_coactions=1, num_runs=3
     if not processed_dir.exists():
         print(f"Error: Directory not found: {processed_dir}")
         print("\nPlease provide a valid dataset path.")
-        print("Example: python examples/benchmark_coretweets.py ../data/Armenia/Processed/")
+        print("Example: uv run examples/benchmark_coretweets.py ../data/Armenia/Processed/")
         return
 
     print("=" * 80)
@@ -269,6 +269,6 @@ if __name__ == '__main__':
         # Try a default path
         dataset_path = "../data/Armenia/Processed/"
         print("No dataset path provided. Using default:", dataset_path)
-        print("Usage: python examples/benchmark_coretweets.py <dataset_path>")
-        print("   or: python examples/benchmark_coretweets.py --multi [data_dir]\n")
+        print("Usage: uv run examples/benchmark_coretweets.py <dataset_path>")
+        print("   or: uv run examples/benchmark_coretweets.py --multi [data_dir]\n")
         compare_approaches(dataset_path, window_sec=60, min_coactions=1, num_runs=3)

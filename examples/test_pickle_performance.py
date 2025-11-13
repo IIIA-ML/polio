@@ -27,7 +27,7 @@ def test_loading_performance(processed_dir):
     if not processed_dir.exists():
         print(f"Error: Directory not found: {processed_dir}")
         print("\nPlease provide a valid dataset path.")
-        print("Example: python examples/test_pickle_performance.py ../data/Armenia/Processed/")
+        print("Example: uv run examples/test_pickle_performance.py ../data/Armenia/Processed/")
         return
 
     print("=" * 80)

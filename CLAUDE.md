@@ -127,21 +127,21 @@ RTs, io_users = import_data("../data/Armenia/Processed/", force_reload=True)
 **Batch conversion:** Convert all datasets to pickle format upfront:
 ```bash
 # Convert all datasets
-python bin/convert_to_pickle.py
+uv run bin/convert_to_pickle.py
 
 # Convert specific datasets
-python bin/convert_to_pickle.py --datasets Armenia Catalonia Spain
+uv run bin/convert_to_pickle.py --datasets Armenia Catalonia Spain
 
 # List cache status
-python bin/convert_to_pickle.py --list
+uv run bin/convert_to_pickle.py --list
 
 # Force reconversion
-python bin/convert_to_pickle.py --force
+uv run bin/convert_to_pickle.py --force
 ```
 
 **Test performance improvement:**
 ```bash
-python examples/test_pickle_performance.py ../data/Armenia/Processed/
+uv run examples/test_pickle_performance.py ../data/Armenia/Processed/
 ```
 
 This is especially beneficial when running experiments with multiple approaches, as each approach loads the same dataset.
@@ -152,25 +152,25 @@ The `bin/run_experiments.py` script processes datasets in batch mode without plo
 
 ```bash
 # Run all datasets and approaches with default settings
-python bin/run_experiments.py
+uv run bin/run_experiments.py
 
 # Specify data directory
-python bin/run_experiments.py --data-dir /path/to/data
+uv run bin/run_experiments.py --data-dir /path/to/data
 
 # Run specific datasets only
-python bin/run_experiments.py --datasets Armenia Catalonia Spain
+uv run bin/run_experiments.py --datasets Armenia Catalonia Spain
 
 # Run specific approaches only
-python bin/run_experiments.py --approaches coretweets ignoring_tweet
+uv run bin/run_experiments.py --approaches coretweets ignoring_tweet
 
 # List processing status of all combinations
-python bin/run_experiments.py --list
+uv run bin/run_experiments.py --list
 
 # Reprocess even if results exist
-python bin/run_experiments.py --force
+uv run bin/run_experiments.py --force
 
 # Custom parameters
-python bin/run_experiments.py --window-sec 120 --min-coactions 2 --output-dir my_results
+uv run bin/run_experiments.py --window-sec 120 --min-coactions 2 --output-dir my_results
 ```
 
 **File Structure**: Results are stored in the `results/` directory (or custom `--output-dir`) with the following structure:
@@ -200,13 +200,13 @@ The `bin/analyze_results.py` script performs comprehensive statistical analysis 
 
 ```bash
 # Analyze all results with default settings
-python bin/analyze_results.py
+uv run bin/analyze_results.py
 
 # Specify custom directories
-python bin/analyze_results.py --results-dir results --output-dir analysis
+uv run bin/analyze_results.py --results-dir results --output-dir analysis
 
 # Skip individual dataset plots (faster)
-python bin/analyze_results.py --no-plots
+uv run bin/analyze_results.py --no-plots
 ```
 
 The script performs:

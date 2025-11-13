@@ -56,7 +56,7 @@ class CoRetweetsNumpyApproach(Approach):
             ~2-5x faster than standard implementation on large datasets
         """
         by_tweet = self._group_RTs_by_tweet(RTs)
-        y = defaultdict(int)
+        y = {}
         window_sec = self.window_sec
 
         for acc_times in by_tweet.values():
@@ -76,7 +76,7 @@ class CoRetweetsNumpyApproach(Approach):
 
             # Vectorized approach: for each user, find all valid pairs
             for i in range(n - 1):
-                user_i = users[i]
+                user_i = int(users[i])  # Convert numpy int64 to Python int
                 time_i = timestamps[i]
 
                 # Vectorized time difference calculation
@@ -85,19 +85,19 @@ class CoRetweetsNumpyApproach(Approach):
                 # Find indices where time is within window
                 valid_mask = time_diffs <= window_sec
 
-                # Early termination: if first element exceeds window, all subsequent will too
-                if not valid_mask.any():
-                    break
-
-                # Get valid partner users
+                # Get valid partner users (only those within time window)
                 valid_users = users[i+1:][valid_mask]
 
                 # Count pairs (excluding same user pairs)
                 for user_j in valid_users:
+                    user_j = int(user_j)  # Convert numpy int64 to Python int
                     if user_i != user_j:
-                        # Create pair in canonical order
-                        pair = (user_i, user_j) if user_i < user_j else (user_j, user_i)
-                        y[pair] += 1
+                        # Create pair in canonical order (matching standard implementation)
+                        pair = tuple(sorted((user_i, user_j)))
+                        if pair not in y:
+                            y[pair] = 1
+                        else:
+                            y[pair] += 1
 
         # Filter pairs with at least min_coactions co-retweets
         return {k: v for k, v in y.items() if v >= self.min_coactions}

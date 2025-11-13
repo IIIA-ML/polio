@@ -6,7 +6,7 @@ This script scans all datasets in the data directory and creates pickle caches
 for each one. Subsequent loads will be 10-100x faster.
 
 Usage:
-    python bin/convert_to_pickle.py [--data-dir DATA_DIR] [--force]
+    uv run bin/convert_to_pickle.py [--data-dir DATA_DIR] [--force]
 """
 
 import argparse
@@ -192,7 +192,7 @@ def main():
 
     print("=" * 80)
     print("\nNext steps:")
-    print("  - Run experiments with: python bin/run_experiments.py")
+    print("  - Run experiments with: uv run bin/run_experiments.py")
     print("  - Data will now load much faster from pickle cache")
     print("  - Caches are automatically invalidated if source files change")
     print("=" * 80)
