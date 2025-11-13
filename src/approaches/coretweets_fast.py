@@ -1,18 +1,19 @@
-"""Co-retweet counting approach."""
+"""Fast co-retweet counting approach using sliding window algorithm."""
 
-from typing import Counter, Dict, Tuple, List, Optional
-from collections import defaultdict, deque
+from typing import Dict, Tuple, List, Optional
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 import pickle
 from .base import Approach
 
 
-class CoRetweetsApproach(Approach):
+class CoRetweetsFastApproach(Approach):
     """
-    Co-retweet counting approach.
+    Fast co-retweet counting approach using sliding window algorithm.
 
     Detects pairs of users who retweeted the same tweet within a time window.
-    This is the baseline approach that other methods build upon.
+    Uses a deque-based sliding window for O(n*k) complexity instead of O(n²),
+    where k is the average number of retweets within the time window (typically << n).
     """
 
     def get_approach_name(self) -> str:

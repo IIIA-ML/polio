@@ -4,6 +4,7 @@ from typing import List, Type, Dict
 from .base import Approach
 from .coretweets import CoRetweetsApproach
 from .coretweets_numpy import CoRetweetsNumpyApproach
+from .coretweets_fast import CoRetweetsFastApproach
 from .ignoring_tweet import IgnoringTweetApproach
 from .ignoring_tweet_fast import IgnoringTweetFastApproach
 from .shared_tweets import SharedTweetsApproach
@@ -16,6 +17,7 @@ class ApproachFactory:
     _approaches: Dict[str, Type[Approach]] = {
         'coretweets': CoRetweetsApproach,
         'coretweets_numpy': CoRetweetsNumpyApproach,
+        'coretweets_fast': CoRetweetsFastApproach,
         'ignoring_tweet': IgnoringTweetApproach,
         'ignoring_tweet_fast': IgnoringTweetFastApproach,
         'shared_tweets': SharedTweetsApproach,

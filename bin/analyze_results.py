@@ -502,7 +502,8 @@ The script will:
 
         # Check if all approaches are available
         if not all(approach_key in dataset_results for approach_key in approach_keys):
-            print(f"  WARNING: Incomplete results, skipping")
+            missing = [key for key in approach_keys if key not in dataset_results]
+            print(f"  WARNING: Incomplete results, skipping (missing: {', '.join(missing)})")
             continue
 
         # Compute scores for all methods
