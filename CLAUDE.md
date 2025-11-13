@@ -10,8 +10,18 @@ This repository contains research code for detecting coordinated inauthentic beh
 
 - **[src/](src/)**: Core analysis module containing the detection algorithms
   - [synchronous_repeated_detection.py](src/synchronous_repeated_detection.py): Main library with all detection functions
-- **[nb/](nb/)**: Jupyter notebooks for experiments and visualization
-  - [synchronous_repeated_detection.ipynb](nb/synchronous_repeated_detection.ipynb): Main experimental notebook comparing detection approaches
+  - [approaches/](src/approaches/)**: Detection approach implementations using factory pattern
+    - [factory.py](src/approaches/factory.py): ApproachFactory for creating approach instances
+    - [coretweets.py](src/approaches/coretweets.py), [ignoring_tweet_fast.py](src/approaches/ignoring_tweet_fast.py), etc.
+- **[bin/](bin/)**: Command-line scripts for running experiments and analysis
+  - [run_experiments.py](bin/run_experiments.py): Batch experiment execution using JSON configs
+  - [analyze_results.py](bin/analyze_results.py): Statistical analysis and visualization of results
+- **[experiments/](experiments/)**: Experiment configuration files and results
+  - JSON config files define experiment parameters
+  - Results stored in `{experiment_name}/results/` subdirectories
+  - Analysis outputs in `{experiment_name}/analysis/` subdirectories
+- **[nb/](nb/)**: Jupyter notebooks for interactive exploration
+  - [synchronous_repeated_detection.ipynb](nb/synchronous_repeated_detection.ipynb): Main experimental notebook
 
 ## Core Architecture
 
@@ -24,15 +34,46 @@ The code expects preprocessed data in a specific directory structure (`../../Lab
 
 ### Detection Approaches
 
-The codebase implements and compares multiple detection methods:
+The codebase implements multiple detection methods using a factory pattern ([approaches/factory.py](src/approaches/factory.py)):
 
-1. **Co-retweet counting** (`coretweets`): Pairs of users who retweeted the same tweet within a time window
-2. **Co-retweet counting (NumPy optimized)** (`coretweets_numpy`): Same as above but with NumPy vectorization for 2-5x speedup
-3. **Temporal synchronization ignoring content** (`ignoring_tweet`): Days where users posted within a time window regardless of tweet content
-4. **Temporal synchronization on shared content** (`shared_tweets`): Days where users retweeted shared content within a time window
-5. **Same tweet, same time** (`same_tweet_same_time`): Strongest signal - days where users co-retweeted identical tweets within a time window
+#### Available Approaches
 
-**Performance Optimization**: The `coretweets_numpy` approach uses NumPy vectorization for improved performance on large datasets, especially those with viral tweets (many retweets per tweet). Benchmark with `examples/benchmark_coretweets.py` to compare.
+1. **`coretweets`** - Co-retweet Counting
+   - Detects user pairs who retweeted the same tweet within a time window
+   - Classic baseline approach
+   - Returns groups of users sorted by co-retweet score
+
+2. **`coretweets_numpy`** - Co-retweet Counting (NumPy Optimized)
+   - Same algorithm as `coretweets` but with NumPy vectorization
+   - Provides 2-5x speedup on large datasets with viral tweets
+   - Recommended for performance-critical experiments
+
+3. **`ignoring_tweet`** - Temporal Synchronization (Content-Agnostic)
+   - Groups users by days where they posted within a time window
+   - Ignores tweet content entirely
+   - Detects temporal coordination patterns
+
+4. **`ignoring_tweet_fast`** - Fast Temporal Synchronization
+   - Optimized version of `ignoring_tweet`
+   - Filters to users who appeared in `coretweets` results first
+   - Significantly faster while maintaining detection quality
+
+5. **`shared_tweets`** - Temporal Synchronization on Shared Content
+   - Days where users retweeted shared content within a time window
+   - Combines content and timing signals
+
+6. **`same_tweet_same_time`** - Same Tweet, Same Time
+   - Strongest signal: users who co-retweeted identical tweets within a time window
+   - Groups by specific tweet and day
+   - Most precise but may miss broader coordination patterns
+
+7. **`coretweets_fast`** - Fast Co-retweet Variant
+   - Similar optimization strategy as `ignoring_tweet_fast`
+
+**Performance Notes:**
+- `_fast` variants pre-filter using coretweets results for improved performance
+- `_numpy` variants use vectorized operations for computational efficiency
+- Benchmark different approaches with `examples/benchmark_*.py` scripts
 
 ### Two-Pointer Temporal Matching
 
@@ -146,87 +187,133 @@ uv run examples/test_pickle_performance.py ../data/Armenia/Processed/
 
 This is especially beneficial when running experiments with multiple approaches, as each approach loads the same dataset.
 
-### Batch Experiments Script
+### Experiment Workflow (Recommended)
 
-The `bin/run_experiments.py` script processes datasets in batch mode without plotting. It automatically tracks which dataset+approach combinations have been processed and stores results as pickle files (one per combination).
+The recommended workflow uses JSON configuration files to define and run experiments. This provides:
+- Reproducible experiment definitions
+- Organized results with clear experiment naming
+- Automatic directory structure creation
+- Integration with statistical analysis tools
+
+#### 1. Create Experiment Configuration
+
+Create a JSON file in the `experiments/` directory (e.g., `experiments/baseline_comparison.json`):
+
+```json
+{
+  "name": "baseline_comparison",
+  "data_dir": "data",
+  "window_sec": 60,
+  "min_coactions": 1,
+  "approaches": ["coretweets", "ignoring_tweet_fast"],
+  "datasets": ["Armenia", "Catalonia", "Spain"],
+  "force": false
+}
+```
+
+**Configuration fields:**
+- `name` (required): Experiment name (creates directory with this name)
+- `data_dir` (optional): Path to datasets directory (default: `"../data"`)
+- `output_dir` (optional): Custom output directory (default: `null` creates `{json_dir}/{name}/`)
+- `window_sec` (optional): Time window in seconds (default: 60)
+- `min_coactions` (optional): Minimum co-actions threshold (default: 1)
+- `approaches` (optional): List of approaches to run (default: `null` = all approaches)
+- `datasets` (optional): List of datasets to process (default: `null` = all datasets)
+- `force` (optional): Reprocess existing results (default: `false`)
+
+#### 2. Run Experiment
 
 ```bash
-# Run all datasets and approaches with default settings
-uv run bin/run_experiments.py
+# Run the experiment defined in the JSON file
+uv run bin/run_experiments.py experiments/baseline_comparison.json
 
-# Specify data directory
-uv run bin/run_experiments.py --data-dir /path/to/data
-
-# Run specific datasets only
-uv run bin/run_experiments.py --datasets Armenia Catalonia Spain
-
-# Run specific approaches only
-uv run bin/run_experiments.py --approaches coretweets ignoring_tweet
-
-# List processing status of all combinations
-uv run bin/run_experiments.py --list
-
-# Reprocess even if results exist
-uv run bin/run_experiments.py --force
-
-# Custom parameters
-uv run bin/run_experiments.py --window-sec 120 --min-coactions 2 --output-dir my_results
+# Check which dataset+approach combinations have been processed
+uv run bin/run_experiments.py experiments/baseline_comparison.json --list
 ```
 
-**File Structure**: Results are stored in the `results/` directory (or custom `--output-dir`) with the following structure:
+**Experiment Directory Structure:**
+
+When `output_dir` is `null`, the script creates the following structure in the same directory as the JSON file:
+
 ```
-results/
-├── Armenia/
-│   ├── coretweets.pkl
-│   ├── ignoring_tweet.pkl
-│   ├── shared_tweets.pkl
-│   └── same_tweet_same_time.pkl
-├── Catalonia/
-│   └── ...
-└── ...
+experiments/
+├── baseline_comparison.json          # Experiment configuration
+└── baseline_comparison/               # Created automatically
+    └── results/
+        ├── Armenia/
+        │   ├── coretweets.pkl
+        │   └── ignoring_tweet_fast.pkl
+        ├── Catalonia/
+        │   └── ...
+        └── Spain/
+            └── ...
 ```
 
 Each `.pkl` file contains:
 - `dataset`: Dataset name
-- `approach`: Approach name
-- `pairs_scores`: Dictionary of user pair scores
+- `suspicious_users`: List of lists of suspicious user groups
 - `io_users`: List of known inauthentic users
-- `window_sec`, `min_coactions`: Parameters used
-- `num_pairs`: Number of pairs detected
+- `num_suspicious_groups`: Number of score-based groups
+- `num_suspicious_users`: Total suspicious users detected
+- Plus approach-specific metadata (approach name, parameters, etc.)
 
-### Results Analysis Script
+#### 3. Analyze Results
 
 The `bin/analyze_results.py` script performs comprehensive statistical analysis on experiment results:
 
 ```bash
-# Analyze all results with default settings
-uv run bin/analyze_results.py
-
-# Specify custom directories
-uv run bin/analyze_results.py --results-dir results --output-dir analysis
+# Analyze the experiment results
+uv run bin/analyze_results.py experiments/baseline_comparison.json
 
 # Skip individual dataset plots (faster)
-uv run bin/analyze_results.py --no-plots
+uv run bin/analyze_results.py experiments/baseline_comparison.json --no-plots
 ```
 
-The script performs:
+The script:
+1. Loads the experiment configuration from the JSON file
+2. Reads results from `{json_dir}/{experiment_name}/results/`
+3. Saves analysis to `{json_dir}/{experiment_name}/analysis/`
 
-1. **Individual Dataset Analysis**: For each dataset, generates a 2×2 comparison plot showing:
-   - Each method vs co-retweet baseline
+**Final Directory Structure:**
+
+```
+experiments/
+├── baseline_comparison.json
+└── baseline_comparison/
+    ├── results/                # Created by run_experiments.py
+    │   ├── Armenia/
+    │   │   ├── coretweets.pkl
+    │   │   └── ignoring_tweet_fast.pkl
+    │   ├── Catalonia/
+    │   └── Spain/
+    └── analysis/               # Created by analyze_results.py
+        ├── plots/
+        │   ├── Armenia_comparison.png
+        │   ├── Catalonia_comparison.png
+        │   └── Spain_comparison.png
+        ├── critical_difference_diagram.png  # Only for 3+ methods
+        └── summary.txt
+```
+
+**Analysis Outputs:**
+
+1. **Individual Dataset Plots** (`analysis/plots/{dataset}_comparison.png`):
+   - Comparison of each method vs baseline (first method)
    - Performance rankings by area under curve (AUC)
    - Dataset statistics
 
 2. **Statistical Analysis**:
-   - **Friedman Test**: Tests for significant differences across methods
-   - **Nemenyi Post-hoc Test**: Pairwise comparisons between methods
-   - **Critical Difference Diagram**: Visual representation of significant differences
+   - **For 2 methods**: Wilcoxon signed-rank test (paired comparison on AUC scores)
+   - **For 3+ methods**: Friedman test + Nemenyi post-hoc test (rank-based)
+   - Results include p-values, test statistics, and significance indicators
 
-3. **Outputs** (saved to `analysis/` directory):
-   - `plots/{dataset}_comparison.png`: Individual dataset comparisons
-   - `critical_difference_diagram.png`: CD diagram showing method rankings
-   - `summary.txt`: Statistical test results and rankings
+3. **Summary Report** (`analysis/summary.txt`):
+   - Experiment name and configuration
+   - Average AUC scores and rankings
+   - Statistical test results
+   - Winner identification (for 2-method comparisons)
 
-The critical difference diagram shows methods connected by blue lines as not significantly different (p > 0.05).
+**Note:** The critical difference diagram is only generated when comparing 3 or more methods. For 2-method comparisons, the Wilcoxon test provides a direct statistical comparison.
 
 ### Jupyter Notebook
 
@@ -299,5 +386,75 @@ Datasets are expected in the following structure:
 
 The default data directory is `../data` (relative to project root). You can customize this:
 - In the notebook: modify the `data_dir` variable in the second cell
-- In the script: use the `--data-dir` argument
+- In experiment JSON: set the `data_dir` field
 - In Python code: pass the full path to `import_data()`
+
+## Quick Reference
+
+### Running a Complete Experiment
+
+```bash
+# 1. Create experiment configuration
+cat > experiments/my_experiment.json << 'EOF'
+{
+  "name": "my_experiment",
+  "data_dir": "data",
+  "approaches": ["coretweets", "ignoring_tweet_fast"],
+  "datasets": null,
+  "window_sec": 60,
+  "min_coactions": 1
+}
+EOF
+
+# 2. Run the experiment
+uv run bin/run_experiments.py experiments/my_experiment.json
+
+# 3. Analyze results
+uv run bin/analyze_results.py experiments/my_experiment.json
+
+# Results will be in:
+# - experiments/my_experiment/results/
+# - experiments/my_experiment/analysis/
+```
+
+### Available Approach Keys
+
+Use these in the `approaches` field of your experiment JSON:
+- `coretweets` - Standard co-retweet counting
+- `coretweets_numpy` - Optimized co-retweet counting
+- `coretweets_fast` - Fast co-retweet variant
+- `ignoring_tweet` - Temporal sync (content-agnostic)
+- `ignoring_tweet_fast` - Fast temporal sync
+- `shared_tweets` - Temporal sync on shared content
+- `same_tweet_same_time` - Same tweet, same time
+
+### Common Workflows
+
+**Compare two methods across all datasets:**
+```json
+{
+  "name": "method_comparison",
+  "approaches": ["coretweets", "ignoring_tweet_fast"],
+  "datasets": null
+}
+```
+
+**Test one method on specific datasets:**
+```json
+{
+  "name": "single_method_test",
+  "approaches": ["coretweets_numpy"],
+  "datasets": ["Armenia", "Catalonia", "Spain"]
+}
+```
+
+**Parameter sensitivity analysis:**
+```json
+{
+  "name": "window_60sec",
+  "approaches": ["coretweets"],
+  "window_sec": 60
+}
+```
+
+Then create `window_120sec.json`, `window_180sec.json`, etc. and compare results.

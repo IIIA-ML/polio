@@ -3,16 +3,18 @@
 Analyze experiment results and perform statistical comparisons.
 
 This script:
-1. Loads results from all processed dataset+approach combinations
-2. Generates comparison plots for each dataset
-3. Computes rankings for each method
-4. Performs Friedman test
-5. Conducts post-hoc analysis (Nemenyi test)
-6. Generates critical difference diagrams
+1. Loads experiment configuration from JSON file
+2. Loads results from the experiment's results directory
+3. Generates comparison plots for each dataset
+4. Computes rankings for each method
+5. Performs Friedman test
+6. Conducts post-hoc analysis (Nemenyi test)
+7. Generates critical difference diagrams
 """
 
 import os
 import sys
+import json
 import pickle
 import argparse
 from pathlib import Path
@@ -27,24 +29,42 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from synchronous_repeated_detection import plot_comparison, _compute_curve
+from approaches import ApproachFactory
 
 
-# Detection approaches (must match run_experiments.py)
-APPROACHES = {
-    'coretweets': 'Co-retweets',
-    'coretweets_numpy': 'Co-retweets (NumPy)',
-    'ignoring_tweet': 'Ignoring Tweet',
-    'shared_tweets': 'Shared Tweets',
-    'same_tweet_same_time': 'Same Tweet Same Time'
-}
+def load_experiment_config(config_path):
+    """
+    Load experiment configuration from JSON file.
+
+    Args:
+        config_path: Path to JSON configuration file
+
+    Returns:
+        Dictionary with experiment configuration
+
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    # Validate required fields
+    if 'name' not in config:
+        raise ValueError("Configuration must include 'name' field")
+
+    return config
 
 
-def load_all_results(results_dir):
+def load_all_results(results_dir, approach_keys):
     """
     Load all result files from the results directory.
 
+    Args:
+        results_dir: Path to results directory
+        approach_keys: List of approach keys to load
+
     Returns:
-        dict: {dataset_name: {approach: results_dict}}
+        dict: {dataset_name: {approach_key: results_dict}}
     """
     results_path = Path(results_dir)
 
@@ -62,13 +82,13 @@ def load_all_results(results_dir):
         dataset_name = dataset_dir.name
 
         # Load each approach file
-        for approach in APPROACHES.keys():
-            pkl_file = dataset_dir / f"{approach}.pkl"
+        for approach_key in approach_keys:
+            pkl_file = dataset_dir / f"{approach_key}.pkl"
 
             if pkl_file.exists():
                 try:
                     with open(pkl_file, 'rb') as f:
-                        all_results[dataset_name][approach] = pickle.load(f)
+                        all_results[dataset_name][approach_key] = pickle.load(f)
                 except Exception as e:
                     print(f"WARNING: Failed to load {pkl_file}: {e}")
 
@@ -109,36 +129,61 @@ def compute_area_under_curve(suspicious_users, io_users):
     return area_obtained / area_ideal
 
 
-def plot_method_comparison(dataset_name, dataset_results, output_dir):
+def plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, output_dir):
     """
     Generate comparison plots for all methods on a dataset.
+
+    Args:
+        dataset_name: Name of the dataset
+        dataset_results: Dictionary of results for each approach
+        approach_keys: List of approach keys in the experiment
+        approach_names: Dictionary mapping approach keys to display names
+        output_dir: Directory to save plots
     """
     # Check if all approaches are available
-    if not all(approach in dataset_results for approach in APPROACHES.keys()):
+    if not all(approach_key in dataset_results for approach_key in approach_keys):
         print(f"  WARNING: Not all approaches available for {dataset_name}, skipping plot")
         return None
 
-    io_users = set(dataset_results['coretweets']['io_users'])
+    # Get IO users from first available approach
+    first_approach = approach_keys[0]
+    io_users = set(dataset_results[first_approach]['io_users'])
 
     # Extract suspicious_users for each method
     methods = {
-        APPROACHES[approach]: dataset_results[approach]['suspicious_users']
-        for approach in APPROACHES.keys()
+        approach_names[approach_key]: dataset_results[approach_key]['suspicious_users']
+        for approach_key in approach_keys
     }
 
-    # Create a figure with subplots
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    # Determine grid size based on number of approaches
+    n_methods = len(methods)
+    if n_methods <= 2:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        axes = axes.flatten()
+    elif n_methods <= 4:
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        axes = axes.flatten()
+    else:
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        axes = axes.flatten()
+
     fig.suptitle(f'Method Comparison - {dataset_name}', fontsize=16, fontweight='bold')
 
-    baseline_suspicious = methods['Co-retweets']
+    # Use first method as baseline
+    baseline_name = list(methods.keys())[0]
+    baseline_suspicious = methods[baseline_name]
 
-    plot_configs = [
-        ('Ignoring Tweet', methods['Ignoring Tweet'], axes[0, 0]),
-        ('Shared Tweets', methods['Shared Tweets'], axes[0, 1]),
-        ('Same Tweet Same Time', methods['Same Tweet Same Time'], axes[1, 0]),
-    ]
+    # Plot each method vs baseline (except baseline itself)
+    plot_idx = 0
+    for method_name, suspicious_users in methods.items():
+        if method_name == baseline_name:
+            continue
 
-    for method_name, suspicious_users, ax in plot_configs:
+        if plot_idx >= len(axes) - 1:
+            break
+
+        ax = axes[plot_idx]
+
         # Compute curves
         x1, y1 = _compute_curve(suspicious_users, io_users)
         x2, y2 = _compute_curve(baseline_suspicious, io_users)
@@ -150,11 +195,11 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
 
         # Plot
         ax.plot(x1, y1, label=method_name, linewidth=2)
-        ax.plot(x2, y2, label='Co-retweets (baseline)', linewidth=2, linestyle='--')
+        ax.plot(x2, y2, label=f'{baseline_name} (baseline)', linewidth=2, linestyle='--')
 
         ax.set_xlabel("Number of users studied")
         ax.set_ylabel("Number of IO users detected")
-        ax.set_title(f'{method_name} vs Co-retweets')
+        ax.set_title(f'{method_name} vs {baseline_name}')
         ax.grid(True, alpha=0.3)
         ax.legend()
 
@@ -165,8 +210,14 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
         ax.text(0.05, 0.95, textstr, transform=ax.transAxes,
                 fontsize=9, verticalalignment='top', bbox=props)
 
+        plot_idx += 1
+
+    # Hide any unused subplots (except the last one which we use for summary)
+    for i in range(plot_idx, len(axes) - 1):
+        axes[i].axis('off')
+
     # Use the last subplot for summary statistics
-    ax = axes[1, 1]
+    ax = axes[-1]
     ax.axis('off')
 
     # Compute area scores for all methods
@@ -184,14 +235,15 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
     for rank, (name, score) in enumerate(sorted_methods, 1):
         summary_text += f"{rank}. {name:20s} {score:.4f}\n"
 
-    # Get dataset info from coretweets results
-    coretweet_result = dataset_results['coretweets']
-    users_in_suspicious = set([u for group in coretweet_result['suspicious_users'] for u in group])
+    # Get dataset info from first approach results
+    first_approach = approach_keys[0]
+    first_result = dataset_results[first_approach]
+    users_in_suspicious = set([u for group in first_result['suspicious_users'] for u in group])
 
     summary_text += f"\n\nDataset Info:\n"
     summary_text += f"Total users: {len(users_in_suspicious)}\n"
     summary_text += f"IO users: {len(users_in_suspicious & io_users)}\n"
-    summary_text += f"Score groups: {coretweet_result['num_suspicious_groups']}\n"
+    summary_text += f"Score groups: {first_result['num_suspicious_groups']}\n"
 
     ax.text(0.1, 0.9, summary_text, transform=ax.transAxes,
             fontsize=10, verticalalignment='top', family='monospace',
@@ -209,6 +261,32 @@ def plot_method_comparison(dataset_name, dataset_results, output_dir):
 
     # Return rankings for this dataset
     return {name: rank for rank, (name, _) in enumerate(sorted_methods, 1)}
+
+
+def wilcoxon_signed_rank_test(scores_method1, scores_method2):
+    """
+    Perform Wilcoxon signed-rank test for paired samples.
+
+    This test is appropriate when comparing exactly two methods across multiple datasets.
+    It tests whether the median difference between paired observations is zero.
+
+    Args:
+        scores_method1: Array of scores for method 1 across datasets
+        scores_method2: Array of scores for method 2 across datasets
+
+    Returns:
+        statistic, p_value, median_diff
+    """
+    # Compute differences
+    differences = scores_method1 - scores_method2
+    median_diff = np.median(differences)
+
+    # Perform Wilcoxon signed-rank test
+    # alternative='two-sided' tests if the distributions differ
+    statistic, p_value = stats.wilcoxon(scores_method1, scores_method2,
+                                        alternative='two-sided', zero_method='wilcox')
+
+    return statistic, p_value, median_diff
 
 
 def friedman_test(rankings_matrix):
@@ -324,17 +402,22 @@ def plot_critical_difference_diagram(avg_ranks, cd, method_names, output_path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze experiment results and perform statistical comparisons"
+        description="Analyze experiment results and perform statistical comparisons",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example usage:
+  uv run bin/analyze_results.py experiments/my_experiment.json
+  uv run bin/analyze_results.py experiments/my_experiment.json --no-plots
+
+The script will:
+1. Load the experiment configuration from the JSON file
+2. Load results from {json_dir}/{experiment_name}/results/
+3. Save analysis to {json_dir}/{experiment_name}/analysis/
+        """
     )
     parser.add_argument(
-        '--results-dir',
-        default='results',
-        help='Directory containing result files (default: results)'
-    )
-    parser.add_argument(
-        '--output-dir',
-        default='analysis',
-        help='Directory to save analysis outputs (default: analysis)'
+        'config',
+        help='Path to experiment JSON configuration file'
     )
     parser.add_argument(
         '--no-plots',
@@ -344,70 +427,119 @@ def main():
 
     args = parser.parse_args()
 
+    # Load experiment configuration
+    try:
+        config = load_experiment_config(args.config)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found: {args.config}")
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in configuration file: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: Invalid configuration: {e}")
+        sys.exit(1)
+
+    # Determine experiment directory based on JSON location
+    config_path = Path(args.config).resolve()
+    json_dir = config_path.parent
+    experiment_dir = json_dir / config['name']
+
+    # Set results and output directories
+    results_dir = experiment_dir / "results"
+    output_dir = experiment_dir / "analysis"
+
+    # Get approaches from config, or use all if not specified
+    if config.get('approaches') is not None:
+        approach_keys = config['approaches']
+    else:
+        # Get all available approaches
+        approach_keys = ApproachFactory.get_all_keys()
+
+    # Get approach display names
+    approach_names = {}
+    for key in approach_keys:
+        approach = ApproachFactory.create(key, window_sec=60, min_coactions=1)
+        approach_names[key] = approach.get_approach_name()
+
     print("="*70)
     print("EXPERIMENT RESULTS ANALYSIS")
     print("="*70)
+    print(f"\nExperiment: {config['name']}")
+    print(f"Configuration file: {args.config}")
+    print(f"Experiment directory: {experiment_dir}")
+    print(f"Results directory: {results_dir}")
+    print(f"Analysis output: {output_dir}")
+    print(f"Approaches: {', '.join(approach_keys)}")
 
     # Load all results
-    print(f"\nLoading results from: {args.results_dir}")
-    all_results = load_all_results(args.results_dir)
+    print(f"\nLoading results...")
+    all_results = load_all_results(results_dir, approach_keys)
 
     if not all_results:
-        print("ERROR: No results found!")
+        print(f"ERROR: No results found in {results_dir}!")
+        print("Have you run the experiment first using run_experiments.py?")
         return
 
     print(f"Loaded {len(all_results)} datasets")
 
     # Method names (in consistent order)
-    method_names = list(APPROACHES.values())
+    method_names = [approach_names[key] for key in approach_keys]
 
-    # Store rankings for each dataset
+    # Store rankings and scores for each dataset
     all_rankings = []
+    all_scores = []  # Store AUC scores for each dataset
     dataset_names = []
 
     # Generate plots and collect rankings
     if not args.no_plots:
         print(f"\nGenerating comparison plots...")
-        plots_dir = Path(args.output_dir) / "plots"
+        plots_dir = Path(output_dir) / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
     for dataset_name, dataset_results in sorted(all_results.items()):
         print(f"\nProcessing: {dataset_name}")
 
         # Check if all approaches are available
-        if not all(approach in dataset_results for approach in APPROACHES.keys()):
+        if not all(approach_key in dataset_results for approach_key in approach_keys):
             print(f"  WARNING: Incomplete results, skipping")
             continue
 
+        # Compute scores for all methods
+        first_approach = approach_keys[0]
+        io_users = set(dataset_results[first_approach]['io_users'])
+        scores = {
+            approach_names[approach_key]: compute_area_under_curve(
+                dataset_results[approach_key]['suspicious_users'], io_users
+            )
+            for approach_key in approach_keys
+        }
+
         # Generate plot or just compute rankings
         if not args.no_plots:
-            rankings = plot_method_comparison(dataset_name, dataset_results, plots_dir)
+            rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, plots_dir)
         else:
             # Just compute rankings without plotting
-            io_users = set(dataset_results['coretweets']['io_users'])
-            scores = {
-                APPROACHES[approach]: compute_area_under_curve(
-                    dataset_results[approach]['suspicious_users'], io_users
-                )
-                for approach in APPROACHES.keys()
-            }
             sorted_methods = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             rankings = {name: rank for rank, (name, _) in enumerate(sorted_methods, 1)}
 
         if rankings is None:
             continue
 
-        # Store rankings in consistent order
+        # Store rankings and scores in consistent order
         dataset_rankings = [rankings[method] for method in method_names]
+        dataset_scores = [scores[method] for method in method_names]
         all_rankings.append(dataset_rankings)
+        all_scores.append(dataset_scores)
         dataset_names.append(dataset_name)
 
     if len(all_rankings) == 0:
         print("\nERROR: No complete datasets found for analysis!")
         return
 
-    # Convert to numpy array
+    # Convert to numpy arrays
     rankings_matrix = np.array(all_rankings)
+    scores_matrix = np.array(all_scores)
 
     print("\n" + "="*70)
     print("STATISTICAL ANALYSIS")
@@ -424,85 +556,150 @@ def main():
     avg_ranks = np.mean(rankings_matrix, axis=0)
     print(f"\n{'Average Rank':<20} " + " ".join([f"{r:>18.2f}" for r in avg_ranks]))
 
-    # Friedman test
-    print("\n" + "-"*70)
-    print("Friedman Test:")
-    print("-"*70)
+    # Display scores matrix
+    print("\n\nAUC Scores Matrix:")
+    print(f"{'Dataset':<20} " + " ".join([f"{m:>18}" for m in method_names]))
+    print("-" * (20 + 19 * len(method_names)))
+    for dataset, scores in zip(dataset_names, scores_matrix):
+        print(f"{dataset:<20} " + " ".join([f"{s:>18.4f}" for s in scores]))
 
-    statistic, p_value = friedman_test(rankings_matrix)
-    print(f"Chi-square statistic: {statistic:.4f}")
-    print(f"P-value: {p_value:.6f}")
+    # Compute average scores
+    avg_scores = np.mean(scores_matrix, axis=0)
+    print(f"\n{'Average AUC':<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]))
 
-    if p_value < 0.05:
-        print("Result: Significant differences detected (p < 0.05)")
-        print("Proceeding with post-hoc analysis...")
-    else:
-        print("Result: No significant differences detected (p >= 0.05)")
+    # Choose appropriate statistical test based on number of methods
+    n_methods = len(method_names)
 
-    # Nemenyi post-hoc test
-    print("\n" + "-"*70)
-    print("Nemenyi Post-hoc Test:")
-    print("-"*70)
+    if n_methods == 2:
+        # Use Wilcoxon signed-rank test for two methods
+        print("\n" + "-"*70)
+        print("Wilcoxon Signed-Rank Test (for two methods):")
+        print("-"*70)
 
-    avg_ranks, cd, p_values = nemenyi_test(rankings_matrix, method_names)
+        statistic, p_value, median_diff = wilcoxon_signed_rank_test(
+            scores_matrix[:, 0], scores_matrix[:, 1]
+        )
 
-    print(f"Critical Difference (CD): {cd:.4f}")
-    print(f"\nAverage Ranks:")
-    for name, rank in zip(method_names, avg_ranks):
-        print(f"  {name:<25} {rank:.3f}")
+        print(f"Test statistic: {statistic:.4f}")
+        print(f"P-value: {p_value:.6f}")
+        print(f"Median difference (AUC): {median_diff:.4f}")
+        print(f"\nMethod 1: {method_names[0]}")
+        print(f"Method 2: {method_names[1]}")
 
-    print(f"\nPairwise Comparisons:")
-    print(f"(1.0 = significantly different, 0.0 = not significantly different)")
-    print(f"\n{'':>20} " + " ".join([f"{m[:10]:>12}" for m in method_names]))
-    for i, name_i in enumerate(method_names):
-        row = f"{name_i[:20]:<20} "
-        for j in range(len(method_names)):
-            if i == j:
-                row += f"{'--':>12} "
+        if p_value < 0.05:
+            if median_diff > 0:
+                print(f"\nResult: {method_names[0]} significantly outperforms {method_names[1]} (p < 0.05)")
             else:
-                row += f"{p_values[i, j]:>12.2f} "
-        print(row)
+                print(f"\nResult: {method_names[1]} significantly outperforms {method_names[0]} (p < 0.05)")
+        else:
+            print("\nResult: No significant difference detected (p >= 0.05)")
 
-    # Generate critical difference diagram
-    print("\n" + "-"*70)
-    print("Generating Critical Difference Diagram...")
-    print("-"*70)
+        # No post-hoc test needed for two methods
+        cd = None
+        p_values = None
 
-    cd_path = Path(args.output_dir) / "critical_difference_diagram.png"
-    plot_critical_difference_diagram(avg_ranks, cd, method_names, cd_path)
+    else:
+        # Use Friedman test for more than two methods
+        print("\n" + "-"*70)
+        print("Friedman Test:")
+        print("-"*70)
+
+        statistic, p_value = friedman_test(rankings_matrix)
+        print(f"Chi-square statistic: {statistic:.4f}")
+        print(f"P-value: {p_value:.6f}")
+
+        if p_value < 0.05:
+            print("Result: Significant differences detected (p < 0.05)")
+            print("Proceeding with post-hoc analysis...")
+        else:
+            print("Result: No significant differences detected (p >= 0.05)")
+
+        # Nemenyi post-hoc test
+        print("\n" + "-"*70)
+        print("Nemenyi Post-hoc Test:")
+        print("-"*70)
+
+        avg_ranks, cd, p_values = nemenyi_test(rankings_matrix, method_names)
+
+        print(f"Critical Difference (CD): {cd:.4f}")
+        print(f"\nAverage Ranks:")
+        for name, rank in zip(method_names, avg_ranks):
+            print(f"  {name:<25} {rank:.3f}")
+
+        print(f"\nPairwise Comparisons:")
+        print(f"(1.0 = significantly different, 0.0 = not significantly different)")
+        print(f"\n{'':>20} " + " ".join([f"{m[:10]:>12}" for m in method_names]))
+        for i, name_i in enumerate(method_names):
+            row = f"{name_i[:20]:<20} "
+            for j in range(len(method_names)):
+                if i == j:
+                    row += f"{'--':>12} "
+                else:
+                    row += f"{p_values[i, j]:>12.2f} "
+            print(row)
+
+        # Generate critical difference diagram
+        print("\n" + "-"*70)
+        print("Generating Critical Difference Diagram...")
+        print("-"*70)
+
+        cd_path = Path(output_dir) / "critical_difference_diagram.png"
+        plot_critical_difference_diagram(avg_ranks, cd, method_names, cd_path)
 
     # Save summary report
-    summary_path = Path(args.output_dir) / "summary.txt"
+    summary_path = Path(output_dir) / "summary.txt"
     with open(summary_path, 'w') as f:
         f.write("="*70 + "\n")
         f.write("EXPERIMENT RESULTS ANALYSIS SUMMARY\n")
         f.write("="*70 + "\n\n")
 
+        f.write(f"Experiment: {config['name']}\n")
         f.write(f"Number of datasets: {len(dataset_names)}\n")
         f.write(f"Methods compared: {len(method_names)}\n\n")
+
+        f.write("Methods:\n")
+        for i, (key, name) in enumerate(zip(approach_keys, method_names), 1):
+            f.write(f"  {i}. {name} ({key})\n")
+        f.write("\n")
+
+        f.write("Average AUC Scores:\n")
+        for name, score in zip(method_names, avg_scores):
+            f.write(f"  {name:<25} {score:.4f}\n")
+        f.write("\n")
 
         f.write("Average Ranks:\n")
         for name, rank in zip(method_names, avg_ranks):
             f.write(f"  {name:<25} {rank:.3f}\n")
 
-        f.write(f"\nFriedman Test:\n")
-        f.write(f"  Chi-square: {statistic:.4f}\n")
-        f.write(f"  P-value: {p_value:.6f}\n")
-        f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n")
+        if n_methods == 2:
+            f.write(f"\nWilcoxon Signed-Rank Test:\n")
+            f.write(f"  Test statistic: {statistic:.4f}\n")
+            f.write(f"  P-value: {p_value:.6f}\n")
+            f.write(f"  Median difference (AUC): {median_diff:.4f}\n")
+            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n")
+            if p_value < 0.05:
+                winner = method_names[0] if median_diff > 0 else method_names[1]
+                f.write(f"  Winner: {winner}\n")
+        else:
+            f.write(f"\nFriedman Test:\n")
+            f.write(f"  Chi-square: {statistic:.4f}\n")
+            f.write(f"  P-value: {p_value:.6f}\n")
+            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n")
 
-        f.write(f"\nNemenyi Test:\n")
-        f.write(f"  Critical Difference: {cd:.4f}\n")
+            f.write(f"\nNemenyi Test:\n")
+            f.write(f"  Critical Difference: {cd:.4f}\n")
 
     print(f"\nSummary report saved: {summary_path}")
 
     print("\n" + "="*70)
     print("ANALYSIS COMPLETE")
     print("="*70)
-    print(f"\nOutputs saved to: {args.output_dir}/")
+    print(f"\nOutputs saved to: {output_dir}/")
     if not args.no_plots:
-        print(f"  - Individual plots: {args.output_dir}/plots/")
-    print(f"  - CD diagram: {args.output_dir}/critical_difference_diagram.png")
-    print(f"  - Summary: {args.output_dir}/summary.txt")
+        print(f"  - Individual plots: {output_dir}/plots/")
+    if n_methods > 2:
+        print(f"  - CD diagram: {output_dir}/critical_difference_diagram.png")
+    print(f"  - Summary: {output_dir}/summary.txt")
 
 
 if __name__ == '__main__':
