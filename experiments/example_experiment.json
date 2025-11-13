@@ -1,0 +1,19 @@
+{
+  "name": "baseline_experiment",
+  "data_dir": "../data",
+  "output_dir": null,
+  "window_sec": 60,
+  "min_coactions": 1,
+  "datasets": [
+    "Armenia",
+    "Catalonia",
+    "Thailand"
+  ],
+  "approaches": [
+    "coretweets",
+    "ignoring_tweet",
+    "shared_tweets",
+    "same_tweet_same_time"
+  ],
+  "force": false
+}

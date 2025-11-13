@@ -5,6 +5,7 @@ from .base import Approach
 from .coretweets import CoRetweetsApproach
 from .coretweets_numpy import CoRetweetsNumpyApproach
 from .ignoring_tweet import IgnoringTweetApproach
+from .ignoring_tweet_fast import IgnoringTweetFastApproach
 from .shared_tweets import SharedTweetsApproach
 from .same_tweet_same_time import SameTweetSameTimeApproach
 
@@ -16,6 +17,7 @@ class ApproachFactory:
         'coretweets': CoRetweetsApproach,
         'coretweets_numpy': CoRetweetsNumpyApproach,
         'ignoring_tweet': IgnoringTweetApproach,
+        'ignoring_tweet_fast': IgnoringTweetFastApproach,
         'shared_tweets': SharedTweetsApproach,
         'same_tweet_same_time': SameTweetSameTimeApproach,
     }
