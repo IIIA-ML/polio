@@ -4,10 +4,13 @@ Run experiments for detecting coordinated inauthentic behavior.
 
 This script processes datasets and computes detection scores using multiple approaches.
 Results are stored in pickle files (one per dataset+approach) to avoid reprocessing.
+
+The script accepts a JSON configuration file that specifies all experiment parameters.
 """
 
 import os
 import sys
+import json
 import pickle
 import argparse
 from pathlib import Path
@@ -32,7 +35,8 @@ DEFAULT_DATASETS = (
 
 def get_result_path(output_dir, dataset, approach_key):
     """Get the path for storing results for a dataset+approach."""
-    dataset_dir = Path(output_dir) / dataset
+    # Results are stored in: {output_dir}/results/{dataset}/{approach}.pkl
+    dataset_dir = Path(output_dir) / "results" / dataset
     return dataset_dir / f"{approach_key}.pkl"
 
 
@@ -123,47 +127,78 @@ def process_dataset_approach(dataset: str, approach: Approach,
     return True
 
 
+def load_experiment_config(config_path):
+    """
+    Load experiment configuration from JSON file.
+
+    Args:
+        config_path: Path to JSON configuration file
+
+    Returns:
+        Dictionary with experiment configuration
+
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    # Validate required fields
+    if 'name' not in config:
+        raise ValueError("Configuration must include 'name' field")
+
+    # Set defaults
+    config.setdefault('data_dir', '../data')
+    config.setdefault('output_dir', None)  # Will be set based on JSON location if not specified
+    config.setdefault('window_sec', 60)
+    config.setdefault('min_coactions', 1)
+    config.setdefault('datasets', None)  # None means all datasets
+    config.setdefault('approaches', None)  # None means all approaches
+    config.setdefault('force', False)
+
+    # Convert null datasets to all datasets
+    if config['datasets'] is None:
+        config['datasets'] = list(DEFAULT_DATASETS)
+
+    # Validate approaches if specified
+    if config['approaches'] is not None:
+        valid_approaches = ApproachFactory.get_all_keys()
+        for approach in config['approaches']:
+            if approach not in valid_approaches:
+                raise ValueError(
+                    f"Invalid approach '{approach}'. Valid approaches: {', '.join(valid_approaches)}"
+                )
+
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Run detection experiments on social media datasets"
+        description="Run detection experiments on social media datasets using JSON configuration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example configuration file (experiment.json):
+{
+  "name": "baseline_experiment",
+  "data_dir": "../data",
+  "output_dir": null,
+  "window_sec": 60,
+  "min_coactions": 1,
+  "datasets": ["Armenia", "Thailand"],
+  "approaches": ["coretweets", "ignoring_tweet_fast"],
+  "force": false
+}
+
+Notes:
+- If output_dir is null, an experiment folder will be created in the same directory
+  as the JSON file with structure: {json_dir}/{name}/results/{dataset}/
+- If datasets is null or omitted, all datasets will be processed
+- If approaches is null or omitted, all approaches will be used
+        """
     )
     parser.add_argument(
-        '--data-dir',
-        default='../data',
-        help='Directory containing datasets (default: ../data)'
-    )
-    parser.add_argument(
-        '--output-dir',
-        default='results',
-        help='Directory to store results (default: results)'
-    )
-    parser.add_argument(
-        '--window-sec',
-        type=int,
-        default=60,
-        help='Time window in seconds for synchronous actions (default: 60)'
-    )
-    parser.add_argument(
-        '--min-coactions',
-        type=int,
-        default=1,
-        help='Minimum co-retweets to consider a pair (default: 1)'
-    )
-    parser.add_argument(
-        '--datasets',
-        nargs='+',
-        help='Specific datasets to process (default: all)'
-    )
-    parser.add_argument(
-        '--approaches',
-        nargs='+',
-        choices=ApproachFactory.get_all_keys(),
-        help='Specific approaches to run (default: all)'
-    )
-    parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Reprocess even if results exist'
+        'config',
+        help='Path to JSON configuration file'
     )
     parser.add_argument(
         '--list',
@@ -173,25 +208,54 @@ def main():
 
     args = parser.parse_args()
 
-    # Determine which datasets and approaches to process
-    datasets = args.datasets if args.datasets else DEFAULT_DATASETS
+    # Load configuration from JSON file
+    try:
+        config = load_experiment_config(args.config)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found: {args.config}")
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in configuration file: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: Invalid configuration: {e}")
+        sys.exit(1)
+
+    # Extract configuration
+    datasets = config['datasets']
+    data_dir = config['data_dir']
+    window_sec = config['window_sec']
+    min_coactions = config['min_coactions']
+    force = config['force']
+
+    # Set output directory based on JSON file location if not specified
+    if config['output_dir'] is None:
+        config_path = Path(args.config).resolve()
+        json_dir = config_path.parent
+        output_dir = str(json_dir / config['name'])
+    else:
+        output_dir = config['output_dir']
+
+    # Create experiment directory
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Create approach instances
-    if args.approaches:
-        approaches = [ApproachFactory.create(key, args.window_sec, args.min_coactions)
-                     for key in args.approaches]
+    if config['approaches'] is not None:
+        approaches = [ApproachFactory.create(key, window_sec, min_coactions)
+                     for key in config['approaches']]
     else:
-        approaches = ApproachFactory.get_all_approaches(args.window_sec, args.min_coactions)
+        approaches = ApproachFactory.get_all_approaches(window_sec, min_coactions)
 
     # List mode
     if args.list:
-        print(f"\nDataset+Approach status (output dir: {args.output_dir}):")
+        print(f"\nExperiment: {config['name']}")
+        print(f"Dataset+Approach status (output dir: {output_dir}):")
         print("=" * 80)
 
         for dataset in datasets:
             print(f"\n{dataset}:")
             for approach in approaches:
-                processed = is_approach_processed(args.output_dir, dataset,
+                processed = is_approach_processed(output_dir, dataset,
                                                  approach.get_approach_key())
                 status = "✓ PROCESSED" if processed else "✗ NOT PROCESSED"
                 print(f"  {approach.get_approach_name():40s} {status}")
@@ -202,12 +266,13 @@ def main():
     print("=" * 80)
     print("RUNNING EXPERIMENTS")
     print("=" * 80)
+    print(f"\nExperiment name: {config['name']}")
     print(f"\nConfiguration:")
-    print(f"  Data directory: {args.data_dir}")
-    print(f"  Output directory: {args.output_dir}")
-    print(f"  Window: {args.window_sec} seconds")
-    print(f"  Min co-actions: {args.min_coactions}")
-    print(f"  Force reprocess: {args.force}")
+    print(f"  Data directory: {data_dir}")
+    print(f"  Output directory: {output_dir}")
+    print(f"  Window: {window_sec} seconds")
+    print(f"  Min co-actions: {min_coactions}")
+    print(f"  Force reprocess: {force}")
     print(f"  Datasets: {len(datasets)}")
     print(f"  Approaches: {len(approaches)}")
     print(f"  Total combinations: {len(datasets) * len(approaches)}")
@@ -227,7 +292,7 @@ def main():
 
             try:
                 result = process_dataset_approach(
-                    dataset, approach, args.data_dir, args.output_dir, args.force
+                    dataset, approach, data_dir, output_dir, force
                 )
 
                 if result is True:
