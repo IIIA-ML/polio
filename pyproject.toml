@@ -1,0 +1,38 @@
+[project]
+name = "polio"
+version = "0.1.0"
+description = "Detection of coordinated inauthentic behavior through synchronous repeated actions analysis"
+readme = "CLAUDE.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20.0",
+    "matplotlib>=3.3.0",
+    "torch>=2.0.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+    "scipy>=1.10.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synchronous_repeated_detection.py", "src/data_loader.py", "src/approaches"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]  # Line too long (handled by formatter)
