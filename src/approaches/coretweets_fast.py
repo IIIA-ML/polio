@@ -4,10 +4,10 @@ from typing import Dict, Tuple, List, Optional
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 import pickle
-from .base import Approach
+from .base import PairsApproach
 
 
-class CoRetweetsFastApproach(Approach):
+class CoRetweetsFastApproach(PairsApproach):
     """
     Fast co-retweet counting approach using sliding window algorithm.
 

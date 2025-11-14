@@ -59,7 +59,49 @@ class Approach(ABC):
             'window_sec': self.window_sec,
             'min_coactions': self.min_coactions,
         }
+    
+    @abstractmethod
+    def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
+        """
+        Get ordered list of suspicious users grouped by score level.
 
+        Returns a list of lists where each inner list contains users from pairs
+        at the same score level, ordered from highest to lowest scores.
+        Each user appears only once (in their highest-scoring group).
+
+        Args:
+            RTs: List of (user_id, tweet_id, timestamp) tuples
+            **kwargs: Additional approach-specific parameters
+
+        Returns:
+            List of lists: [[users_at_highest_score], [users_at_next_score], ...]
+        """
+        pass
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(window_sec={self.window_sec}, min_coactions={self.min_coactions})"
+
+    def __str__(self) -> str:
+        return self.get_approach_name()
+    
+
+class PairsApproach(Approach):
+    """Abstract base class for approaches that compute pair scores."""
+
+    @abstractmethod
+    def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
+        """
+        Compute pair scores for the given retweet data.
+
+        Args:
+            RTs: List of (user_id, tweet_id, timestamp) tuples
+            **kwargs: Additional approach-specific parameters
+
+        Returns:
+            Dictionary mapping user pairs (tuple of sorted user IDs) to their scores
+        """
+        pass
+    
     def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
         """
         Get ordered list of suspicious users grouped by score level.
@@ -111,8 +153,3 @@ class Approach(ABC):
 
         return ordered_list_of_suspicious_users
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(window_sec={self.window_sec}, min_coactions={self.min_coactions})"
-
-    def __str__(self) -> str:
-        return self.get_approach_name()

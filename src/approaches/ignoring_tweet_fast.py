@@ -2,10 +2,10 @@
 
 from typing import Dict, Tuple, List
 from collections import defaultdict, deque
-from .base import Approach
+from .base import PairsApproach
 
 
-class IgnoringTweetFastApproach(Approach):
+class IgnoringTweetFastApproach(PairsApproach):
     """
     Optimized temporal synchronization ignoring tweet content.
 

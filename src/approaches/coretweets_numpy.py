@@ -3,10 +3,10 @@
 from typing import Dict, Tuple, List
 from collections import defaultdict
 import numpy as np
-from .base import Approach
+from .base import PairsApproach
 
 
-class CoRetweetsNumpyApproach(Approach):
+class CoRetweetsNumpyApproach(PairsApproach):
     """
     Co-retweet counting approach with NumPy vectorization.
 

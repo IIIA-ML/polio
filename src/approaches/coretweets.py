@@ -4,10 +4,10 @@ from typing import Dict, Tuple, List, Optional
 from collections import defaultdict
 from pathlib import Path
 import pickle
-from .base import Approach
+from .base import PairsApproach
 
 
-class CoRetweetsApproach(Approach):
+class CoRetweetsApproach(PairsApproach):
     """
     Co-retweet counting approach.
 

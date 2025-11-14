@@ -2,10 +2,10 @@
 
 from typing import Dict, Tuple, List
 from collections import defaultdict
-from .base import Approach
+from .base import PairsApproach
 
 
-class SameTweetSameTimeApproach(Approach):
+class SameTweetSameTimeApproach(PairsApproach):
     """
     Same tweet, same time approach.
 

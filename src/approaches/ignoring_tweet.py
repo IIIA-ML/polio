@@ -2,10 +2,10 @@
 
 from typing import Dict, Tuple, List
 from collections import defaultdict
-from .base import Approach
+from .base import PairsApproach
 
 
-class IgnoringTweetApproach(Approach):
+class IgnoringTweetApproach(PairsApproach):
     """
     Temporal synchronization ignoring tweet content.
 
