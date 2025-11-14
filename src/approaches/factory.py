@@ -9,6 +9,7 @@ from .ignoring_tweet import IgnoringTweetApproach
 from .ignoring_tweet_fast import IgnoringTweetFastApproach
 from .shared_tweets import SharedTweetsApproach
 from .same_tweet_same_time import SameTweetSameTimeApproach
+from .lexicographic import LexicographicApproach
 
 
 class ApproachFactory:
@@ -22,6 +23,7 @@ class ApproachFactory:
         'ignoring_tweet_fast': IgnoringTweetFastApproach,
         'shared_tweets': SharedTweetsApproach,
         'same_tweet_same_time': SameTweetSameTimeApproach,
+        'lexicographic': LexicographicApproach,
     }
 
     @classmethod
@@ -29,6 +31,11 @@ class ApproachFactory:
                min_coactions: int = 1) -> Approach:
         """
         Create an approach instance by key.
+
+        Special format for lexicographic approaches:
+        - "lexicographic:approach1+approach2+..." creates a LexicographicApproach
+          combining the specified sub-approaches in order
+        - Example: "lexicographic:ignoring_tweet_fast+shared_tweets"
 
         Args:
             approach_key: Key identifying the approach
@@ -41,6 +48,30 @@ class ApproachFactory:
         Raises:
             ValueError: If approach_key is unknown
         """
+        # Handle lexicographic approach with special syntax
+        if approach_key.startswith('lexicographic:'):
+            # Extract sub-approach keys from "lexicographic:key1+key2+..."
+            sub_keys_str = approach_key.split(':', 1)[1]
+            sub_keys = sub_keys_str.split('+')
+
+            if len(sub_keys) < 2:
+                raise ValueError(
+                    f"Lexicographic approach requires at least 2 sub-approaches. "
+                    f"Format: 'lexicographic:approach1+approach2+...'"
+                )
+
+            # Validate all sub-keys exist (excluding 'lexicographic' itself)
+            valid_keys = [k for k in cls._approaches.keys() if k != 'lexicographic']
+            for key in sub_keys:
+                if key not in valid_keys:
+                    raise ValueError(
+                        f"Unknown sub-approach in lexicographic: {key}. "
+                        f"Valid keys: {', '.join(valid_keys)}"
+                    )
+
+            return LexicographicApproach(sub_keys, window_sec, min_coactions)
+
+        # Handle regular approaches
         if approach_key not in cls._approaches:
             valid_keys = ', '.join(cls._approaches.keys())
             raise ValueError(f"Unknown approach: {approach_key}. Valid keys: {valid_keys}")
@@ -83,6 +114,46 @@ class ApproachFactory:
             approach.get_approach_key(): approach.get_approach_name()
             for approach in temp_instances
         }
+
+    @classmethod
+    def validate_approach_key(cls, approach_key: str) -> None:
+        """
+        Validate an approach key without creating an instance.
+
+        Supports both regular approach keys and lexicographic syntax.
+
+        Args:
+            approach_key: Key to validate (e.g., "coretweets" or "lexicographic:a+b")
+
+        Raises:
+            ValueError: If the approach key is invalid
+        """
+        # Handle lexicographic syntax
+        if approach_key.startswith('lexicographic:'):
+            sub_keys_str = approach_key.split(':', 1)[1]
+            sub_keys = sub_keys_str.split('+')
+
+            if len(sub_keys) < 2:
+                raise ValueError(
+                    f"Invalid lexicographic approach '{approach_key}'. "
+                    f"Format: 'lexicographic:approach1+approach2+...'"
+                )
+
+            # Validate all sub-keys (excluding 'lexicographic' itself)
+            valid_keys = [k for k in cls._approaches.keys() if k != 'lexicographic']
+            for key in sub_keys:
+                if key not in valid_keys:
+                    raise ValueError(
+                        f"Invalid sub-approach '{key}' in lexicographic approach. "
+                        f"Valid approaches: {', '.join(valid_keys)}"
+                    )
+        else:
+            # Regular approach
+            if approach_key not in cls._approaches:
+                valid_keys = ', '.join(cls._approaches.keys())
+                raise ValueError(
+                    f"Invalid approach '{approach_key}'. Valid approaches: {valid_keys}"
+                )
 
     @classmethod
     def register_approach(cls, approach_key: str, approach_class: Type[Approach]):

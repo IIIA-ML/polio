@@ -55,13 +55,14 @@ def load_experiment_config(config_path):
     return config
 
 
-def load_all_results(results_dir, approach_keys):
+def load_all_results(results_dir, approach_keys, approach_storage_keys):
     """
     Load all result files from the results directory.
 
     Args:
         results_dir: Path to results directory
-        approach_keys: List of approach keys to load
+        approach_keys: List of approach keys from config (for result dict keys)
+        approach_storage_keys: List of storage keys (for filenames)
 
     Returns:
         dict: {dataset_name: {approach_key: results_dict}}
@@ -81,9 +82,9 @@ def load_all_results(results_dir, approach_keys):
 
         dataset_name = dataset_dir.name
 
-        # Load each approach file
-        for approach_key in approach_keys:
-            pkl_file = dataset_dir / f"{approach_key}.pkl"
+        # Load each approach file using storage key for filename
+        for approach_key, storage_key in zip(approach_keys, approach_storage_keys):
+            pkl_file = dataset_dir / f"{storage_key}.pkl"
 
             if pkl_file.exists():
                 try:
@@ -127,6 +128,40 @@ def compute_area_under_curve(suspicious_users, io_users):
 
     # Return as fraction of ideal (0 to 1, higher is better)
     return area_obtained / area_ideal
+
+
+def compute_rankings_with_ties(scores):
+    """
+    Compute rankings from scores, assigning the same rank to tied scores.
+
+    Uses standard competition ranking (1224 ranking): if two items are tied for
+    first place, they both get rank 1, and the next item gets rank 3.
+
+    Args:
+        scores: Dictionary mapping names to scores (higher is better)
+
+    Returns:
+        Dictionary mapping names to ranks (1 = best)
+    """
+    # Sort by score (descending)
+    sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+    rankings = {}
+    current_rank = 1
+
+    for i, (name, score) in enumerate(sorted_items):
+        # Check if this score is tied with the previous one
+        if i > 0 and abs(score - sorted_items[i-1][1]) < 1e-10:
+            # Same score as previous, use same rank
+            rankings[name] = rankings[sorted_items[i-1][0]]
+        else:
+            # New score, use current rank (which accounts for ties)
+            rankings[name] = current_rank
+
+        # Increment rank for next iteration
+        current_rank = i + 2
+
+    return rankings
 
 
 def plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, output_dir):
@@ -225,14 +260,18 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     for name, pairs in methods.items():
         scores[name] = compute_area_under_curve(pairs, io_users)
 
-    # Sort by score
+    # Compute rankings with proper tie handling
+    rankings = compute_rankings_with_ties(scores)
+
+    # Sort by score for display
     sorted_methods = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
     # Display summary
     summary_text = "Performance Summary\n" + "="*30 + "\n\n"
     summary_text += "Method Rankings (by AUC):\n\n"
 
-    for rank, (name, score) in enumerate(sorted_methods, 1):
+    for name, score in sorted_methods:
+        rank = rankings[name]
         summary_text += f"{rank}. {name:20s} {score:.4f}\n"
 
     # Get dataset info from first approach results
@@ -260,7 +299,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     print(f"  Saved plot: {output_path}")
 
     # Return rankings for this dataset
-    return {name: rank for rank, (name, _) in enumerate(sorted_methods, 1)}
+    return rankings
 
 
 def wilcoxon_signed_rank_test(scores_method1, scores_method2):
@@ -306,7 +345,7 @@ def nemenyi_test(rankings_matrix, method_names):
     """
     Perform Nemenyi post-hoc test.
 
-    Returns matrix of p-values for pairwise comparisons.
+    Returns matrix of significance flags for pairwise comparisons.
     """
     n_datasets, n_methods = rankings_matrix.shape
 
@@ -324,16 +363,17 @@ def nemenyi_test(rankings_matrix, method_names):
 
     cd = q_alpha * np.sqrt(n_methods * (n_methods + 1) / (6 * n_datasets))
 
-    # Compute pairwise differences
-    p_values = np.ones((n_methods, n_methods))
+    # Compute pairwise significance
+    # Matrix stores: 1.0 = significantly different, 0.0 = not significantly different
+    sig_matrix = np.zeros((n_methods, n_methods))
 
     for i in range(n_methods):
         for j in range(i + 1, n_methods):
             rank_diff = abs(avg_ranks[i] - avg_ranks[j])
-            # If difference exceeds CD, methods are significantly different
-            p_values[i, j] = p_values[j, i] = 1.0 if rank_diff < cd else 0.0
+            # If difference exceeds or equals CD, methods are significantly different
+            sig_matrix[i, j] = sig_matrix[j, i] = 1.0 if rank_diff >= cd else 0.0
 
-    return avg_ranks, cd, p_values
+    return avg_ranks, cd, sig_matrix
 
 
 def plot_critical_difference_diagram(avg_ranks, cd, method_names, output_path):
@@ -456,10 +496,16 @@ The script will:
         # Get all available approaches
         approach_keys = ApproachFactory.get_all_keys()
 
-    # Get approach display names
+    # Create approach instances to get storage keys and display names
+    approach_instances = []
+    approach_storage_keys = []
     approach_names = {}
+
     for key in approach_keys:
         approach = ApproachFactory.create(key, window_sec=60, min_coactions=1)
+        approach_instances.append(approach)
+        storage_key = approach.get_approach_key()
+        approach_storage_keys.append(storage_key)
         approach_names[key] = approach.get_approach_name()
 
     print("="*70)
@@ -474,7 +520,7 @@ The script will:
 
     # Load all results
     print(f"\nLoading results...")
-    all_results = load_all_results(results_dir, approach_keys)
+    all_results = load_all_results(results_dir, approach_keys, approach_storage_keys)
 
     if not all_results:
         print(f"ERROR: No results found in {results_dir}!")
@@ -521,8 +567,7 @@ The script will:
             rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, plots_dir)
         else:
             # Just compute rankings without plotting
-            sorted_methods = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-            rankings = {name: rank for rank, (name, _) in enumerate(sorted_methods, 1)}
+            rankings = compute_rankings_with_ties(scores)
 
         if rankings is None:
             continue
@@ -597,7 +642,7 @@ The script will:
 
         # No post-hoc test needed for two methods
         cd = None
-        p_values = None
+        sig_matrix = None
 
     else:
         # Use Friedman test for more than two methods
@@ -620,7 +665,7 @@ The script will:
         print("Nemenyi Post-hoc Test:")
         print("-"*70)
 
-        avg_ranks, cd, p_values = nemenyi_test(rankings_matrix, method_names)
+        avg_ranks, cd, sig_matrix = nemenyi_test(rankings_matrix, method_names)
 
         print(f"Critical Difference (CD): {cd:.4f}")
         print(f"\nAverage Ranks:")
@@ -636,7 +681,7 @@ The script will:
                 if i == j:
                     row += f"{'--':>12} "
                 else:
-                    row += f"{p_values[i, j]:>12.2f} "
+                    row += f"{sig_matrix[i, j]:>12.2f} "
             print(row)
 
         # Generate critical difference diagram

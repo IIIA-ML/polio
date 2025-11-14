@@ -27,13 +27,13 @@ class IgnoringTweetFastApproach(PairsApproach):
     def get_approach_key(self) -> str:
         return "ignoring_tweet_fast"
 
-    def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
+    def _compute_pairs_scores_impl(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
         """
         Count days users posted within time window using sliding window algorithm.
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
-            **kwargs: Ignored for this approach
+            **kwargs: Additional parameters (unused for this approach)
 
         Returns:
             Dictionary mapping user pairs to their coincidence counts

@@ -58,14 +58,14 @@ class IgnoringTweetApproach(PairsApproach):
 
         return len(days)
 
-    def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
+    def _compute_pairs_scores_impl(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
         """
         Count days users posted within time window, regardless of content.
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
                  Should be filtered to users who have co-retweeted
-            **kwargs: Ignored for this approach
+            **kwargs: Additional parameters (unused for this approach)
 
         Returns:
             Dictionary mapping user pairs to their coincidence counts

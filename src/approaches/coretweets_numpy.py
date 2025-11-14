@@ -40,14 +40,14 @@ class CoRetweetsNumpyApproach(PairsApproach):
             tweet_data[tid].sort(key=lambda x: x[1])
         return tweet_data
 
-    def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
+    def _compute_pairs_scores_impl(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
         """
         Count pairs who retweeted same tweet within time window.
         Uses NumPy vectorization for improved performance.
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
-            **kwargs: Ignored for this approach
+            **kwargs: Additional parameters (unused for this approach)
 
         Returns:
             Dictionary mapping user pairs to their co-retweet counts

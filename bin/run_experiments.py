@@ -162,12 +162,8 @@ def load_experiment_config(config_path):
 
     # Validate approaches if specified
     if config['approaches'] is not None:
-        valid_approaches = ApproachFactory.get_all_keys()
         for approach in config['approaches']:
-            if approach not in valid_approaches:
-                raise ValueError(
-                    f"Invalid approach '{approach}'. Valid approaches: {', '.join(valid_approaches)}"
-                )
+            ApproachFactory.validate_approach_key(approach)
 
     return config
 

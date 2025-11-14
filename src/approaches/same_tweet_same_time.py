@@ -31,14 +31,14 @@ class SameTweetSameTimeApproach(PairsApproach):
             tweet_data[tid].sort(key=lambda x: x[1])
         return tweet_data
 
-    def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
+    def _compute_pairs_scores_impl(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
         """
         Count days users co-retweeted same tweet within time window.
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
                  Should be filtered to users who have co-retweeted
-            **kwargs: Ignored for this approach
+            **kwargs: Additional parameters (unused for this approach)
 
         Returns:
             Dictionary mapping user pairs to their same-tweet-same-time counts
