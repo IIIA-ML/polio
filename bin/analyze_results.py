@@ -23,6 +23,8 @@ from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+import scikit_posthocs as sp
+from aeon.visualisation import plot_critical_difference
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -242,7 +244,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
         textstr = f'Total area diff: {total_area:.2f}\n'
         textstr += f'Negative area: {negative_area:.2f}'
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-        ax.text(0.05, 0.95, textstr, transform=ax.transAxes,
+        ax.text(0.65, 0.25, textstr, transform=ax.transAxes,
                 fontsize=9, verticalalignment='top', bbox=props)
 
         plot_idx += 1
@@ -343,100 +345,103 @@ def friedman_test(rankings_matrix):
 
 def nemenyi_test(rankings_matrix, method_names):
     """
-    Perform Nemenyi post-hoc test.
+    Perform Nemenyi post-hoc test using scikit-posthocs.
 
-    Returns matrix of significance flags for pairwise comparisons.
+    The Nemenyi test is used for pairwise comparisons after a significant Friedman test.
+    It returns p-values for all pairwise comparisons.
+    
+    Args:
+        rankings_matrix: 2D array where rows are datasets and columns are methods
+        method_names: List of method names
+
+    Returns:
+        avg_ranks: Average rank for each method
+        cd: Critical difference value
+        pvalues_matrix: Matrix of p-values for pairwise comparisons
     """
     n_datasets, n_methods = rankings_matrix.shape
 
     # Compute average ranks
     avg_ranks = np.mean(rankings_matrix, axis=0)
 
-    # Critical difference for Nemenyi test
+    # Perform Nemenyi post-hoc test using scikit-posthocs
+    # The function expects data in the format: rows=observations, columns=groups
+    # This matches our rankings_matrix format
+    pvalues_matrix = sp.posthoc_nemenyi_friedman(rankings_matrix)
+    
+    # Convert DataFrame to numpy array if needed
+    if hasattr(pvalues_matrix, 'values'):
+        pvalues_matrix = pvalues_matrix.values
+
+    # Calculate critical difference for visualization
     # CD = q_alpha * sqrt(k(k+1) / (6N))
     # where q_alpha is from studentized range distribution
-
     from scipy.stats import studentized_range
-
-    # For alpha=0.05, k methods, infinity df
     q_alpha = studentized_range.ppf(0.95, n_methods, np.inf)
-
     cd = q_alpha * np.sqrt(n_methods * (n_methods + 1) / (6 * n_datasets))
 
-    # Compute pairwise significance
-    # Matrix stores: 1.0 = significantly different, 0.0 = not significantly different
-    sig_matrix = np.zeros((n_methods, n_methods))
-
-    for i in range(n_methods):
-        for j in range(i + 1, n_methods):
-            rank_diff = abs(avg_ranks[i] - avg_ranks[j])
-            # If difference exceeds or equals CD, methods are significantly different
-            sig_matrix[i, j] = sig_matrix[j, i] = 1.0 if rank_diff >= cd else 0.0
-
-    return avg_ranks, cd, sig_matrix
+    return avg_ranks, cd, pvalues_matrix
 
 
-def plot_critical_difference_diagram(avg_ranks, cd, method_names, output_path):
+def plot_critical_difference_diagram(scores_matrix, method_names, output_path, lower_better=False):
     """
-    Generate critical difference diagram (CD diagram).
+    Generate critical difference diagram (CD diagram) using aeon library.
 
-    Shows average ranks and connects methods that are NOT significantly different.
+    This function uses the standard aeon.visualisation.plot_critical_difference
+    which properly handles statistical testing and visualization.
+    
+    Args:
+        scores_matrix: 2D array where rows are datasets and columns are methods (raw scores, not ranks)
+        method_names: List of method names
+        output_path: Path to save the diagram
+        lower_better: If True, lower scores are better (e.g., error rates).
+                     If False, higher scores are better (e.g., accuracy, AUC)
     """
+    # Set figure size - using width parameter for better control
+    # Adjust size based on number of methods for readability
     n_methods = len(method_names)
-
-    # Sort methods by average rank
-    sorted_indices = np.argsort(avg_ranks)
-    sorted_names = [method_names[i] for i in sorted_indices]
-    sorted_ranks = avg_ranks[sorted_indices]
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Plot settings
-    y_positions = np.arange(n_methods)
-    rank_min, rank_max = 1, n_methods
-
-    # Draw horizontal lines for each method
-    for i, (name, rank) in enumerate(zip(sorted_names, sorted_ranks)):
-        ax.plot([rank, rank], [i - 0.3, i + 0.3], 'k-', linewidth=2)
-        ax.text(rank_max + 0.3, i, name, va='center', fontsize=11)
-
-    # Draw connections for non-significant differences
-    for i in range(n_methods):
-        for j in range(i + 1, n_methods):
-            idx_i = sorted_indices[i]
-            idx_j = sorted_indices[j]
-
-            if abs(sorted_ranks[i] - sorted_ranks[j]) < cd:
-                # Not significantly different - draw connection
-                y_conn = max(i, j) + 0.5
-                ax.plot([sorted_ranks[i], sorted_ranks[j]],
-                       [y_conn, y_conn], 'b-', linewidth=2, alpha=0.6)
-
-    # Add critical difference bar
-    cd_y = -1
-    cd_center = (rank_min + rank_max) / 2
-    ax.plot([cd_center - cd/2, cd_center + cd/2], [cd_y, cd_y], 'r-', linewidth=3)
-    ax.plot([cd_center - cd/2, cd_center - cd/2], [cd_y - 0.1, cd_y + 0.1], 'r-', linewidth=2)
-    ax.plot([cd_center + cd/2, cd_center + cd/2], [cd_y - 0.1, cd_y + 0.1], 'r-', linewidth=2)
-    ax.text(cd_center, cd_y - 0.5, f'CD = {cd:.3f}', ha='center', fontsize=10, color='red')
-
-    # Styling
-    ax.set_xlim(rank_min - 0.5, rank_max + 3)
-    ax.set_ylim(-2, n_methods)
-    ax.set_xlabel('Average Rank', fontsize=12)
-    ax.set_title('Critical Difference Diagram\n(methods connected by blue lines are not significantly different)',
-                 fontsize=14, fontweight='bold')
-    ax.set_yticks([])
-    ax.spines['left'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.grid(axis='x', alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig_width = max(10, n_methods * 0.8)
+    fig_height = max(8, n_methods * 0.6)
+    
+    plt.figure(figsize=(fig_width, fig_height))
+    
+    # Generate the critical difference diagram using aeon
+    # test='nemenyi' uses the Nemenyi post-hoc test
+    # correction='holm' applies Holm correction for multiple comparisons
+    plot_critical_difference(
+        scores_matrix,
+        method_names,
+        lower_better=lower_better,
+        test='nemenyi',
+        correction='holm',
+    )
+    
+    # Get the current axes for customization
+    ax = plt.gca()
+    
+    # Adjust font size and rotation of x-axis labels for better readability
+    for label in ax.get_xticklabels():
+        label.set_fontsize(12)
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+    
+    # Increase padding between labels and axis
+    ax.tick_params(axis='x', which='major', pad=15)
+    
+    # Adjust y-axis label font size
+    ax.tick_params(axis='y', labelsize=11)
+    
+    # Adjust margins to provide more space for labels
+    plt.subplots_adjust(bottom=0.25, left=0.1, right=0.95)
+    
+    # Optionally adjust figure size if needed (workaround for size issues)
+    fig = plt.gcf()
+    fig.set_size_inches(fig_width, fig_height)
+    
+    # Save and close
+    plt.savefig(output_path, format='png', bbox_inches='tight', dpi=300)
     plt.close()
-
+    
     print(f"\nCritical difference diagram saved: {output_path}")
 
 
@@ -665,24 +670,38 @@ The script will:
         print("Nemenyi Post-hoc Test:")
         print("-"*70)
 
-        avg_ranks, cd, sig_matrix = nemenyi_test(rankings_matrix, method_names)
+        avg_ranks, cd, pvalues_matrix = nemenyi_test(rankings_matrix, method_names)
 
         print(f"Critical Difference (CD): {cd:.4f}")
         print(f"\nAverage Ranks:")
         for name, rank in zip(method_names, avg_ranks):
             print(f"  {name:<25} {rank:.3f}")
 
-        print(f"\nPairwise Comparisons:")
-        print(f"(1.0 = significantly different, 0.0 = not significantly different)")
+        print(f"\nPairwise Comparisons (p-values):")
+        print(f"(p-value < 0.05 indicates significant difference)")
         print(f"\n{'':>20} " + " ".join([f"{m[:10]:>12}" for m in method_names]))
         for i, name_i in enumerate(method_names):
             row = f"{name_i[:20]:<20} "
             for j in range(len(method_names)):
                 if i == j:
-                    row += f"{'--':>12} "
+                    row += f"{'1.000':>12} "
                 else:
-                    row += f"{sig_matrix[i, j]:>12.2f} "
+                    row += f"{pvalues_matrix[i, j]:>12.4f} "
             print(row)
+
+        # Show significant pairs
+        print(f"\nSignificant differences (p < 0.05):")
+        sig_pairs = []
+        for i in range(len(method_names)):
+            for j in range(i + 1, len(method_names)):
+                if pvalues_matrix[i, j] < 0.05:
+                    sig_pairs.append((method_names[i], method_names[j], pvalues_matrix[i, j]))
+        
+        if sig_pairs:
+            for name1, name2, pval in sig_pairs:
+                print(f"  {name1} vs {name2}: p = {pval:.4f}")
+        else:
+            print("  No significant pairwise differences found")
 
         # Generate critical difference diagram
         print("\n" + "-"*70)
@@ -690,7 +709,8 @@ The script will:
         print("-"*70)
 
         cd_path = Path(output_dir) / "critical_difference_diagram.png"
-        plot_critical_difference_diagram(avg_ranks, cd, method_names, cd_path)
+        # Note: scores_matrix contains AUC scores where higher is better, so lower_better=False
+        plot_critical_difference_diagram(scores_matrix, method_names, cd_path, lower_better=False)
 
     # Save summary report
     summary_path = Path(output_dir) / "summary.txt"

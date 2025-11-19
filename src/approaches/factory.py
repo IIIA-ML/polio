@@ -1,6 +1,10 @@
 """Factory for creating approach instances."""
 
 from typing import List, Type, Dict
+
+from .shared_tweets_fast import SharedTweetsFastApproach
+from .shared_tweets_counting_rt import SharedTweetCountingRTApproach
+from .ignoring_tweet_counting_rt import IgnoringTweetCountingRTApproach
 from .base import Approach
 from .coretweets import CoRetweetsApproach
 from .coretweets_numpy import CoRetweetsNumpyApproach
@@ -24,6 +28,9 @@ class ApproachFactory:
         'shared_tweets': SharedTweetsApproach,
         'same_tweet_same_time': SameTweetSameTimeApproach,
         'lexicographic': LexicographicApproach,
+        'ignoring_tweet_counting_rt': IgnoringTweetCountingRTApproach,
+        'shared_tweet_counting_rt': SharedTweetCountingRTApproach,
+        'shared_tweets_fast': SharedTweetsFastApproach,
     }
 
     @classmethod
