@@ -148,7 +148,7 @@ def load_experiment_config(config_path):
         raise ValueError("Configuration must include 'name' field")
 
     # Set defaults
-    config.setdefault('data_dir', '../data')
+    config.setdefault('data_dir', 'data')
     config.setdefault('output_dir', None)  # Will be set based on JSON location if not specified
     config.setdefault('window_sec', 60)
     config.setdefault('min_coactions', 1)

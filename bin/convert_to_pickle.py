@@ -94,8 +94,8 @@ def main():
     )
     parser.add_argument(
         '--data-dir',
-        default='../data',
-        help='Directory containing datasets (default: ../data)'
+        default='data',
+        help='Directory containing datasets (default: data)'
     )
     parser.add_argument(
         '--datasets',
