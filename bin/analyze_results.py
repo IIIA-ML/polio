@@ -98,7 +98,7 @@ def load_all_results(results_dir, approach_keys, approach_storage_keys):
     return dict(all_results)
 
 
-def compute_area_under_curve(suspicious_users, io_users):
+def compute_area_under_curve(suspicious_users, io_users, x_max):
     """
     Compute normalized area under the detection curve.
 
@@ -112,11 +112,22 @@ def compute_area_under_curve(suspicious_users, io_users):
         return 0.0
 
     x_vals, y_vals = _compute_curve(suspicious_users, set(io_users))
-
+    if x_vals[-1] > x_max-1:
+        x_vals = x_vals[:x_max]
+        y_vals = y_vals[:x_max]
     # Total users and IO users in suspicious_users
-    users_in_suspicious = set([u for group in suspicious_users for u in group])
+    ordered_users = []
+    seen = set()
+    # Collect users in original order, without duplicates
+    for group in suspicious_users:
+        for u in group:
+            if u not in seen:
+                ordered_users.append(u)
+                seen.add(u)
+    # Truncate while preserving order
+    users_in_suspicious = ordered_users[:x_max]
     total_users = len(users_in_suspicious)
-    total_io = len(users_in_suspicious & set(io_users))
+    total_io = len(set(io_users))
 
     if total_io == 0:
         return 0.0
@@ -225,6 +236,15 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
         x1, y1 = _compute_curve(suspicious_users, io_users)
         x2, y2 = _compute_curve(baseline_suspicious, io_users)
 
+        if x1[-1] > x2[-1]:
+            x1 = x1[:x2[-1]+1]
+            y1 = y1[:x2[-1]+1]
+        elif x2[-1] > x1[-1]:
+            x2 = x2[:x1[-1]+1]
+            y2 = y2[:x1[-1]+1]
+        
+        x_max = len(x2)
+
         # Calculate differences
         diff = y1 - y2
         total_area = np.sum(diff)
@@ -260,7 +280,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     # Compute area scores for all methods
     scores = {}
     for name, pairs in methods.items():
-        scores[name] = compute_area_under_curve(pairs, io_users)
+        scores[name] = compute_area_under_curve(pairs, io_users, x_max)
 
     # Compute rankings with proper tie handling
     rankings = compute_rankings_with_ties(scores)
@@ -283,7 +303,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
 
     summary_text += f"\n\nDataset Info:\n"
     summary_text += f"Total users: {len(users_in_suspicious)}\n"
-    summary_text += f"IO users: {len(users_in_suspicious & io_users)}\n"
+    summary_text += f"IO users: {len(io_users)}\n"
     summary_text += f"Score groups: {first_result['num_suspicious_groups']}\n"
 
     ax.text(0.1, 0.9, summary_text, transform=ax.transAxes,
@@ -560,9 +580,15 @@ The script will:
         # Compute scores for all methods
         first_approach = approach_keys[0]
         io_users = set(dataset_results[first_approach]['io_users'])
+        
+        x_max = float('inf')
+        for k in approach_keys:
+            x_max_approach = len(set([u for group in dataset_results[k]['suspicious_users'] for u in group]))
+            x_max = min(x_max, x_max_approach)
+        
         scores = {
             approach_names[approach_key]: compute_area_under_curve(
-                dataset_results[approach_key]['suspicious_users'], io_users
+                dataset_results[approach_key]['suspicious_users'], io_users, x_max
             )
             for approach_key in approach_keys
         }

@@ -1,0 +1,12 @@
+{
+  "name": "NoFilter_ThreshCoRetweets",
+  "data_dir": "data",
+  "window_sec": 60,
+  "min_coactions": 1,
+  "approaches": [
+    "coretweets",
+    "ignoring_tweet_fast",
+    "lexicographic:ignoring_tweet_fast+ignoring_tweet_counting_rt"
+  ],
+  "force": false
+}
