@@ -14,7 +14,7 @@ class CoRetweetsApproach(PairsApproach):
     """
 
     def get_approach_name(self) -> str:
-        return "Co-retweets"
+        return "Vol."
 
     def get_approach_key(self) -> str:
         return "coretweets"

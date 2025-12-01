@@ -22,7 +22,7 @@ class IgnoringTweetFastApproach(PairsApproach):
     """
 
     def get_approach_name(self) -> str:
-        return "Ignoring Tweet (Fast)"
+        return "Cons."
 
     def get_approach_key(self) -> str:
         return "ignoring_tweet_fast"

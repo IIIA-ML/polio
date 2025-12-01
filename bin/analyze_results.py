@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 import scikit_posthocs as sp
 from aeon.visualisation import plot_critical_difference
+from sympy import true
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -127,17 +128,19 @@ def compute_area_under_curve(suspicious_users, io_users, x_max):
     # Truncate while preserving order
     users_in_suspicious = ordered_users[:x_max]
     total_users = len(users_in_suspicious)
-    total_io = len(set(io_users))
-
+    
+    #total_io = len(set(io_users))  # If we want to consider all IO users in Retweet dataset
+    total_io = y_vals[-1]
+    
     if total_io == 0:
-        return 0.0
+        return 1.0
 
     # Compute areas
     area_obtained = float(np.sum(y_vals))
     area_ideal = float(np.sum([min(x, total_io) for x in range(total_users + 1)]))
 
     if area_ideal == 0:
-        return 0.0
+        return 1.0
 
     # Return as fraction of ideal (0 to 1, higher is better)
     return area_obtained / area_ideal
@@ -420,8 +423,8 @@ def plot_critical_difference_diagram(scores_matrix, method_names, output_path, l
     # Set figure size - using width parameter for better control
     # Adjust size based on number of methods for readability
     n_methods = len(method_names)
-    fig_width = max(10, n_methods * 0.8)
-    fig_height = max(8, n_methods * 0.6)
+    fig_width = max(6, n_methods * 0.8)
+    fig_height = max(5, n_methods * 0.6)
     
     plt.figure(figsize=(fig_width, fig_height))
     
@@ -438,18 +441,6 @@ def plot_critical_difference_diagram(scores_matrix, method_names, output_path, l
     
     # Get the current axes for customization
     ax = plt.gca()
-    
-    # Adjust font size and rotation of x-axis labels for better readability
-    for label in ax.get_xticklabels():
-        label.set_fontsize(12)
-        label.set_rotation(45)
-        label.set_horizontalalignment('right')
-    
-    # Increase padding between labels and axis
-    ax.tick_params(axis='x', which='major', pad=15)
-    
-    # Adjust y-axis label font size
-    ax.tick_params(axis='y', labelsize=11)
     
     # Adjust margins to provide more space for labels
     plt.subplots_adjust(bottom=0.25, left=0.1, right=0.95)
@@ -754,17 +745,46 @@ The script will:
             f.write(f"  {i}. {name} ({key})\n")
         f.write("\n")
 
-        f.write("Average AUC Scores:\n")
-        for name, score in zip(method_names, avg_scores):
-            f.write(f"  {name:<25} {score:.4f}\n")
+        f.write("=" * 70 + "\n")
+        f.write("AUC SCORES MATRIX\n")
+        f.write("=" * 70 + "\n\n")
+        
+        # Create header
+        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        
+        # Write each dataset's scores
+        for dataset, scores in zip(dataset_names, scores_matrix):
+            f.write(f"{dataset:<20} " + " ".join([f"{s:>18.4f}" for s in scores]) + "\n")
+        
         f.write("\n")
+        f.write(f"{'Average AUC':<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]) + "\n")
+        f.write("\n\n")
 
-        f.write("Average Ranks:\n")
-        for name, rank in zip(method_names, avg_ranks):
-            f.write(f"  {name:<25} {rank:.3f}\n")
+        f.write("=" * 70 + "\n")
+        f.write("RANKINGS MATRIX\n")
+        f.write("=" * 70 + "\n\n")
+        
+        # Create header
+        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        
+        # Write each dataset's rankings
+        for dataset, ranks in zip(dataset_names, rankings_matrix):
+            f.write(f"{dataset:<20} " + " ".join([f"{r:>18.0f}" for r in ranks]) + "\n")
+        
+        f.write("\n")
+        f.write(f"{'Average Rank':<20} " + " ".join([f"{r:>18.2f}" for r in avg_ranks]) + "\n")
+        f.write("\n\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("STATISTICAL TESTS\n")
+        f.write("=" * 70 + "\n\n")
 
         if n_methods == 2:
-            f.write(f"\nWilcoxon Signed-Rank Test:\n")
+            f.write(f"Wilcoxon Signed-Rank Test:\n")
             f.write(f"  Test statistic: {statistic:.4f}\n")
             f.write(f"  P-value: {p_value:.6f}\n")
             f.write(f"  Median difference (AUC): {median_diff:.4f}\n")
@@ -773,13 +793,44 @@ The script will:
                 winner = method_names[0] if median_diff > 0 else method_names[1]
                 f.write(f"  Winner: {winner}\n")
         else:
-            f.write(f"\nFriedman Test:\n")
+            f.write(f"Friedman Test:\n")
             f.write(f"  Chi-square: {statistic:.4f}\n")
             f.write(f"  P-value: {p_value:.6f}\n")
-            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n")
+            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n\n")
 
-            f.write(f"\nNemenyi Test:\n")
-            f.write(f"  Critical Difference: {cd:.4f}\n")
+            f.write(f"Nemenyi Post-hoc Test:\n")
+            f.write(f"  Critical Difference: {cd:.4f}\n\n")
+
+            f.write("  Pairwise P-values:\n")
+            f.write("  (p-value < 0.05 indicates significant difference)\n\n")
+            
+            # Write header for p-values matrix
+            header = "  " + f"{'':>20} " + " ".join([f"{m[:12]:>12}" for m in method_names])
+            f.write(header + "\n")
+            
+            # Write each row of p-values
+            for i, name_i in enumerate(method_names):
+                row = "  " + f"{name_i[:20]:<20} "
+                for j in range(len(method_names)):
+                    if i == j:
+                        row += f"{'1.000':>12} "
+                    else:
+                        row += f"{pvalues_matrix[i, j]:>12.4f} "
+                f.write(row + "\n")
+            true
+            # Add significant pairs
+            f.write(f"\n  Significant differences (p < 0.05):\n")
+            sig_pairs = []
+            for i in range(len(method_names)):
+                for j in range(i + 1, len(method_names)):
+                    if pvalues_matrix[i, j] < 0.05:
+                        sig_pairs.append((method_names[i], method_names[j], pvalues_matrix[i, j]))
+            
+            if sig_pairs:
+                for name1, name2, pval in sig_pairs:
+                    f.write(f"    {name1} vs {name2}: p = {pval:.4f}\n")
+            else:
+                f.write("    No significant pairwise differences found\n")
 
     print(f"\nSummary report saved: {summary_path}")
 

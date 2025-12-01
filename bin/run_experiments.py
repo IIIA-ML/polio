@@ -29,8 +29,8 @@ DEFAULT_DATASETS = (
     'Armenia', 'Catalonia', 'Ghana_Nigeria', 'Iran_5', 'Russia_3', 'Spain',
     'Venezuela_2', 'Thailand', 'Ecuador', 'Iran_1', 'Iran_6', 'Russia_5',
     'Qatar', 'Russia_2', 'China_1', 'China_2', 'Russia_1', 'Russia_4',
-    'Iran_2', 'Iran_3', 'Iran_4', 'Bangladesh', 'Cuba', 'Egypt_UAE', 
-    'Venezuela_1', 'UAE'
+    'Iran_2', 'Iran_3', 'Iran_4', 'Bangladesh', 'Egypt_UAE', 
+    'Venezuela_1', 'UAE', 'Cuba'
 )
 
 

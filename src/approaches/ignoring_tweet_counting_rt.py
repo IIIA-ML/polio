@@ -34,7 +34,7 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
     """
 
     def get_approach_name(self) -> str:
-        return "Ignoring Tweet Counting RT"
+        return "Prec."
 
     def get_approach_key(self) -> str:
         return "ignoring_tweet_counting_rt"

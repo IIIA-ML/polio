@@ -5,8 +5,7 @@
   "min_coactions": 1,
   "approaches": [
     "coretweets",
-    "ignoring_tweet_fast",
-    "lexicographic:ignoring_tweet_fast+coretweets"
+    "ignoring_tweet_fast"
   ],
   "force": false
 }

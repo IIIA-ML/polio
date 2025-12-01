@@ -32,7 +32,7 @@ def load_from_text_files(processed_dir: Path) -> Tuple[List[Tuple], List[int], d
     processed_dir = Path(processed_dir)
 
     # Load user ID mappings
-    data_file = processed_dir / "data.txt"
+    data_file = processed_dir / "index_to_accountid.txt"
     with open(data_file, "r") as f:
         content = f.readlines()
         dict_str = content[0].split('=', 1)[1]
@@ -122,7 +122,7 @@ def is_cache_valid(processed_dir: Path) -> bool:
     # Check if cache is newer than source files
     cache_time = pickle_file.stat().st_mtime
     source_files = [
-        processed_dir / "data.txt",
+        processed_dir / "index_to_accountid.txt",
         processed_dir / "io_users.txt",
         processed_dir / "RTs.txt"
     ]

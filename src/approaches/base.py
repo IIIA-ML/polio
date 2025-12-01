@@ -36,7 +36,7 @@ class Approach(ABC):
 
         Default is True for most approaches except coretweets itself.
         """
-        return self.get_approach_key() != 'coretweets' # and self.get_approach_key() != 'ignoring_tweet_fast' and self.get_approach_key() != 'shared_tweets_fast' and self.get_approach_key() != 'same_tweet_same_time' and self.get_approach_key() != 'ignoring_tweet_counting_rt'
+        return self.get_approach_key() != 'coretweets'# and self.get_approach_key() != 'ignoring_tweet_fast' and self.get_approach_key() != 'shared_tweets' and self.get_approach_key() != 'same_tweet_same_time' and self.get_approach_key() != 'ignoring_tweet_counting_rt'
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return metadata about this approach's configuration."""

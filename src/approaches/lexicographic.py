@@ -55,9 +55,9 @@ class LexicographicApproach(Approach):
         metadata['sub_approaches'] = self.approach_keys
         return metadata
 
-    def needs_filtered_data(self) -> bool:
-        """Depends on whether first approach needs filtered data."""
-        return self.approaches[0].needs_filtered_data()
+    #def needs_filtered_data(self) -> bool:
+    #    """Depends on whether first approach needs filtered data."""
+    #    return self.approaches[0].needs_filtered_data()
 
     def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
         """

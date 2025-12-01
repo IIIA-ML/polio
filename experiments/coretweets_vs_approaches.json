@@ -6,10 +6,10 @@
   "approaches": [
     "coretweets",
     "ignoring_tweet_fast",
-    "shared_tweets_fast",
+    "lexicographic:coretweets+ignoring_tweet_fast",
     "lexicographic:ignoring_tweet_fast+coretweets",
-    "lexicographic:ignoring_tweet_fast+ignoring_tweet_counting_rt+coretweets",
-    "lexicographic:shared_tweets_fast+shared_tweet_counting_rt+coretweets"
+    "lexicographic:ignoring_tweet_fast+ignoring_tweet_counting_rt",
+    "lexicographic:ignoring_tweet_fast+ignoring_tweet_counting_rt+coretweets"
   ],
   "force": false
 }
