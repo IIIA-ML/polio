@@ -52,7 +52,7 @@ class IgnoringTweetFastApproach(PairsApproach):
         active = deque()  # Contains (user, timestamp) tuples
 
         # Track unique (pair, day) combinations
-        pair_days = defaultdict(set)
+        pair_days = {}
 
         # Process events chronologically
         for ts_curr, user_curr in events:
@@ -68,6 +68,8 @@ class IgnoringTweetFastApproach(PairsApproach):
                     # Create canonical pair (sorted tuple)
                     pair = tuple(sorted((user_curr, user_active)))
                     # Add this day to the set of days for this pair
+                    if pair not in pair_days:
+                        pair_days[pair] = set()
                     pair_days[pair].add(current_day)
 
             # Add current user to active set
@@ -79,6 +81,7 @@ class IgnoringTweetFastApproach(PairsApproach):
         for i in range(len(unique_users)):
             for j in range(i + 1, len(unique_users)):
                 pair = (unique_users[i], unique_users[j])
-                result[pair] = len(pair_days.get(pair, set()))
+                if pair in pair_days:
+                    result[pair] = len(pair_days[pair])
 
         return result

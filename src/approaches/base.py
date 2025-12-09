@@ -4,21 +4,66 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Any
 from pathlib import Path
 import pickle
+from scipy.optimize import minimize
+from statistics import mean
+from statistics import median
+import math
 
 
 class Approach(ABC):
     """Abstract base class for all detection approaches."""
 
-    def __init__(self, window_sec: int = 60, min_coactions: int = 1):
+    def __init__(self, window_sec: int = 60, min_coactions: int = 1, ranking_mode: str = 'L2'):
         """
         Initialize approach with common parameters.
 
         Args:
             window_sec: Time window in seconds for synchronous actions
             min_coactions: Minimum co-retweets to consider a pair
+            ranking_mode: How to aggregate pair scores for user ranking.
+                         'max': rank by maximum of all pair scores
+                         'L1': rank by median of all pairs scores
+                         'L2': rank by mean of all pair scores
+                         'Linf': rank by midrange of all pair scores
+                         'LX' (X>=3): rank using Lp-norm minimization with p=X
         """
+        if not self._is_valid_ranking_mode(ranking_mode):
+            raise ValueError(f"ranking_mode must be 'max', 'L1', 'L2', 'Linf', or 'LX' (X>=3), got '{ranking_mode}'")
+        
         self.window_sec = window_sec
         self.min_coactions = min_coactions
+        self.ranking_mode = ranking_mode
+
+    @staticmethod
+    def _is_valid_ranking_mode(ranking_mode: str) -> bool:
+        """
+        Validate if a ranking mode is valid.
+        
+        Args:
+            ranking_mode: The ranking mode string to validate
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if ranking_mode in ('L1', 'L2', 'Linf', 'max'):
+            return True
+        # Check for LX where X is a number >= 3
+        if ranking_mode.startswith('L') and len(ranking_mode) > 1:
+            try:
+                norm_value = int(ranking_mode[1:])
+                return norm_value >= 3
+            except ValueError:
+                return False
+        return False
+
+    @staticmethod
+    def _minimize_norm(norm: float, data: List[float]) -> float:
+        def sum_norm(v):
+            return sum(abs(d - v[0]) ** norm for d in data)
+
+        # Initial guess: mean of data
+        res = minimize(sum_norm, x0=[mean(data)])
+        return round(res.x[0], 2)
 
     @abstractmethod
     def get_approach_name(self) -> str:
@@ -30,13 +75,32 @@ class Approach(ABC):
         """Return key used for file storage (e.g., 'coretweets')."""
         pass
 
+    def get_full_approach_key(self) -> str:
+        """
+        Return full key including ranking mode if not default.
+        
+        This is used for storing results separately for different ranking modes.
+        """
+        base_key = self.get_approach_key()
+        return f"{base_key}_{self.ranking_mode}"
+    
+    def get_full_approach_name(self) -> str:
+        """
+        Return display name including ranking mode if not default.
+        
+        This is used for displaying approaches with different ranking modes
+        as separate entries in analysis and plots.
+        """
+        base_name = self.get_approach_name()
+        return f"{base_name} ({self.ranking_mode})"
+
     def needs_filtered_data(self) -> bool:
         """
         Return whether this approach needs data filtered by coretweets.
 
         Default is True for most approaches except coretweets itself.
         """
-        return self.get_approach_key() != 'coretweets'# and self.get_approach_key() != 'ignoring_tweet_fast' and self.get_approach_key() != 'shared_tweets' and self.get_approach_key() != 'same_tweet_same_time' and self.get_approach_key() != 'ignoring_tweet_counting_rt'
+        return self.get_approach_key() != 'coretweets' # and self.get_approach_key() != 'ignoring_tweet_fast' and self.get_approach_key() != 'shared_tweets' and self.get_approach_key() != 'same_tweet_same_time' and self.get_approach_key() != 'ignoring_tweet_counting_rt'
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return metadata about this approach's configuration."""
@@ -46,6 +110,7 @@ class Approach(ABC):
             'approach_key': self.get_approach_key(),
             'window_sec': self.window_sec,
             'min_coactions': self.min_coactions,
+            'ranking_mode': self.ranking_mode,
         }
     
     @abstractmethod
@@ -84,11 +149,67 @@ class Approach(ABC):
         return ranks
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(window_sec={self.window_sec}, min_coactions={self.min_coactions})"
+        return f"{self.__class__.__name__}(window_sec={self.window_sec}, min_coactions={self.min_coactions}, ranking_mode='{self.ranking_mode}')"
 
     def __str__(self) -> str:
         return self.get_approach_name()
     
+    @staticmethod
+    def compute_user_scores_from_pairs(pairs_scores: Dict[Tuple, float], ranking_mode: str) -> Dict[int, float]:
+        """
+        Compute user scores from pair scores based on ranking mode.
+
+        Args:
+            pairs_scores: Dictionary mapping user pairs to their scores
+            ranking_mode: How to aggregate pair scores for each user:
+                         'max': maximum of all pair scores for the user
+                         'L1': median of all pair scores for the user
+                         'L2': mean of all pair scores for the user
+                         'Linf': midrange (average of min and max) of all pair scores for the user
+                         'LX' (X>=3): minimize Lp-norm with p=X over all pair scores
+
+        Returns:
+            Dictionary mapping user_id to their aggregated score
+        """
+        
+        if not Approach._is_valid_ranking_mode(ranking_mode):
+            raise ValueError(f"ranking_mode must be 'max', 'L1', 'L2', 'Linf', or 'LX' (X>=3), got '{ranking_mode}'")
+        
+        # Collect all scores for each user
+        user_pair_scores = {}  # {user_id: [list of scores from pairs involving this user]}
+        
+        for pair, score in pairs_scores.items():
+            if score != 0:
+                for user in pair:
+                    if user not in user_pair_scores:
+                        user_pair_scores[user] = []
+                    user_pair_scores[user].append(score)
+            
+        # Compute aggregated score for each user based on ranking mode
+        user_scores = {}
+        for user, scores in user_pair_scores.items():
+            if len(scores) == 1:
+                # Only one pair score, use it directly
+                user_scores[user] = scores[0]
+                continue
+            if ranking_mode == 'L1':
+                # L1: median of all pair scores
+                user_scores[user] = median(scores)
+            elif ranking_mode == 'L2':
+                # L2: mean of all pair scores
+                user_scores[user] = sum(scores) / len(scores)
+            elif ranking_mode == 'Linf':
+                # Linf: midrange (average of min and max)
+                user_scores[user] = (min(scores) + max(scores)) / 2
+            elif ranking_mode == 'max':
+                # Special case for L-infinity norm
+                user_scores[user] = max(scores)
+            else:
+                # LX where X >= 3: minimize Lp-norm
+                norm_value = int(ranking_mode[1:])
+                user_scores[user] = Approach._minimize_norm(norm_value, scores)
+        
+        return user_scores
 
 class PairsApproach(Approach):
     """Abstract base class for approaches that compute pair scores with automatic caching."""
@@ -260,6 +381,13 @@ class PairsApproach(Approach):
         at the same score level, ordered from highest to lowest scores.
         Each user appears only once (in their highest-scoring group).
 
+        The ranking mode determines how user scores are computed:
+        - 'max': each user's score is the maximum score among all their pairs
+        - 'L1': each user's score is the median score among all their pairs
+        - 'L2': each user's score is the mean of scores from all their pairs (default)
+        - 'Linf': each user's score is the midrange of scores from all their pairs
+        - 'LX' (X>=3): each user's score minimizes the Lp-norm with p=X
+
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
             **kwargs: Additional approach-specific parameters
@@ -273,33 +401,28 @@ class PairsApproach(Approach):
         if not pairs_scores:
             return []
 
-        # Sort pairs by score in descending order
-        sorted_pairs = sorted(pairs_scores.items(), key=lambda x: x[1], reverse=True)
+        # Compute user scores based on ranking mode
+        user_scores = Approach.compute_user_scores_from_pairs(pairs_scores, self.ranking_mode)
 
-        # Track users already seen to avoid duplicates
-        users_seen = set()
+        # Sort users by score (descending)
+        sorted_users = sorted(user_scores.items(), key=lambda x: x[1], reverse=True)
+
+        # Group users with the same score
         ordered_list_of_suspicious_users = []
-
         idx = 0
-        n = len(sorted_pairs)
+        n = len(sorted_users)
 
-        # Process pairs in score blocks (all pairs with same score)
         while idx < n:
-            current_score = sorted_pairs[idx][1]
-            block_users = set()
+            current_score = sorted_users[idx][1]
+            block_users = []
 
-            # Collect all users from pairs with the same score
-            while idx < n and sorted_pairs[idx][1] == current_score:
-                pair, _ = sorted_pairs[idx]
-                for user in pair:
-                    if user not in users_seen and user not in block_users:
-                        block_users.add(user)
+            # Collect all users with the same score
+            while idx < n and sorted_users[idx][1] == current_score:
+                block_users.append(sorted_users[idx][0])
                 idx += 1
 
-            # Add this score block's users as a new list
-            if block_users:
-                ordered_list_of_suspicious_users.append(sorted(block_users))
-                users_seen.update(block_users)
+            # Add this score block's users as a new list (sorted for consistency)
+            ordered_list_of_suspicious_users.append(sorted(block_users))
 
         return ordered_list_of_suspicious_users
 

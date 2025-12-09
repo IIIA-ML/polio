@@ -14,45 +14,85 @@ class LexicographicApproach(Approach):
     and subsequent approaches act as progressive refinements.
     """
 
-    def __init__(self, approach_keys: List[str], window_sec: int = 60, min_coactions: int = 1):
+    def __init__(self, approach_keys: List[str], window_sec: int = 60, min_coactions: int = 1, ranking_mode: str = 'L2', sub_modes: List[str] = None):
         """
         Initialize LexicographicApproach with a list of sub-approaches.
 
         Args:
-            approach_keys: List of approach keys to combine (e.g., ['ignoring_tweet_fast', 'shared_tweets'])
+            approach_keys: List of approach keys to combine (e.g., ['coretweets', 'ignoring_tweet_fast'])
             window_sec: Time window in seconds for synchronous actions
             min_coactions: Minimum co-retweets to consider a pair
+            ranking_mode: Default ranking mode (unused in new format, but kept for compatibility)
+            sub_modes: List of ranking modes per sub-approach (must match length of approach_keys)
 
         Raises:
-            ValueError: If fewer than 2 approaches are provided
+            ValueError: If fewer than 2 approaches are provided or sub_modes is None/wrong length
         """
-        super().__init__(window_sec, min_coactions)
+        super().__init__(window_sec, min_coactions, ranking_mode)
 
         if len(approach_keys) < 2:
             raise ValueError("LexicographicApproach requires at least 2 approaches")
 
-        self.approach_keys = approach_keys
+        if sub_modes is None:
+            raise ValueError(
+                "LexicographicApproach now requires explicit ranking modes for each sub-approach. "
+                "Use format: 'lexicographic:approach1[mode1]+approach2[mode2]+...'"
+            )
 
-        # Instantiate sub-approaches using factory
+        if len(sub_modes) != len(approach_keys):
+            raise ValueError(
+                f"Length of sub_modes ({len(sub_modes)}) must match "
+                f"length of approach_keys ({len(approach_keys)})"
+            )
+
+        self.approach_keys = approach_keys
+        self.sub_modes = sub_modes
+
+        # Instantiate sub-approaches using factory with their specific modes
         from .factory import ApproachFactory
         self.approaches = [
-            ApproachFactory.create(key, window_sec, min_coactions)
-            for key in approach_keys
+            ApproachFactory.create(key, window_sec, min_coactions, mode)
+            for key, mode in zip(approach_keys, sub_modes)
         ]
 
     def get_approach_name(self) -> str:
-        """Return human-readable name."""
-        approach_names = [a.get_approach_name() for a in self.approaches]
-        return f"Lexicographic ({', '.join(approach_names)})"
+        """Return human-readable name using sub-approaches' display names."""
+        # Use each sub-approach's display name and its mode
+        parts = [
+            f"{approach.get_approach_name()}[{mode}]" for approach, mode in zip(self.approaches, self.sub_modes)
+        ]
+        return f"Lexicographic: {'+'.join(parts)}"
 
     def get_approach_key(self) -> str:
         """Return storage key."""
-        return f"lexicographic_{'_'.join(self.approach_keys)}"
+        # Include sub-approaches and their modes in the key
+        parts = [f"{key}_{mode}" for key, mode in zip(self.approach_keys, self.sub_modes)]
+        return f"lexicographic_{'_'.join(parts)}"
+
+    def get_full_approach_key(self) -> str:
+        """
+        Return full key for storage.
+        
+        For lexicographic, the key already includes all mode information,
+        so we don't append the default ranking_mode like the base class does.
+        """
+        return self.get_approach_key()
+
+    def get_full_approach_name(self) -> str:
+        """
+        Return display name.
+        
+        For lexicographic, the name already includes all mode information,
+        so we don't append the ranking_mode again like the base class does.
+        """
+        return self.get_approach_name()
 
     def get_metadata(self) -> Dict[str, Any]:
         """Include sub-approach information in metadata."""
         metadata = super().get_metadata()
         metadata['sub_approaches'] = self.approach_keys
+        metadata['sub_modes'] = self.sub_modes
+        metadata['sub_approach_modes'] = dict(zip(self.approach_keys, self.sub_modes))
         return metadata
 
     #def needs_filtered_data(self) -> bool:

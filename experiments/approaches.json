@@ -1,0 +1,14 @@
+{
+  "name": "approaches_ranking_modes",
+  "data_dir": "data",
+  "window_sec": 60,
+  "min_coactions": 1,
+  "approaches": [
+    "ignoring_tweet_fast[Linf]",
+    "lexicographic:coretweets[Linf]+ignoring_tweet_fast[Linf]",
+    "lexicographic:ignoring_tweet_fast[Linf]+coretweets[Linf]",
+    "lexicographic:ignoring_tweet_fast[Linf]+ignoring_tweet_counting_rt[Linf]",
+    "lexicographic:ignoring_tweet_fast[Linf]+ignoring_tweet_counting_rt[Linf]+coretweets[Linf]"
+  ],
+  "force": false
+}

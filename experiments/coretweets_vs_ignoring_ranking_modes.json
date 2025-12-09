@@ -1,0 +1,11 @@
+{
+  "name": "coretweets_vs_ignoring_ranking_modes",
+  "data_dir": "data",
+  "window_sec": 60,
+  "min_coactions": 1,
+  "approaches": [
+    "coretweets[Linf]",
+    "ignoring_tweet_fast[Linf]"
+  ],
+  "force": false
+}

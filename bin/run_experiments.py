@@ -29,36 +29,41 @@ DEFAULT_DATASETS = (
     'Armenia', 'Catalonia', 'Ghana_Nigeria', 'Iran_5', 'Russia_3', 'Spain',
     'Venezuela_2', 'Thailand', 'Ecuador', 'Iran_1', 'Iran_6', 'Russia_5',
     'Qatar', 'Russia_2', 'China_1', 'China_2', 'Russia_1', 'Russia_4',
-    'Iran_2', 'Iran_3', 'Iran_4', 'Bangladesh', 'Egypt_UAE', 
-    'Venezuela_1', 'UAE', 'Cuba'
+    'Iran_2', 'Iran_3', 'Iran_4', 'UAE' #, 'Cuba', 'Egypt_UAE', 'Bangladesh', 'Venezuela_1'
 )
 
 
-def get_result_path(output_dir, dataset, approach_key):
+def get_result_path(output_dir, dataset, approach):
     """Get the path for storing results for a dataset+approach."""
     # Results are stored in: {output_dir}/results/{dataset}/{approach}.pkl
+    # Use full key which includes ranking mode if not default
+    if isinstance(approach, str):
+        approach_key = approach
+    else:
+        approach_key = approach.get_full_approach_key()
+    
     dataset_dir = Path(output_dir) / "results" / dataset
     return dataset_dir / f"{approach_key}.pkl"
 
 
-def is_approach_processed(output_dir, dataset, approach_key):
+def is_approach_processed(output_dir, dataset, approach):
     """Check if a dataset+approach has already been processed."""
-    result_path = get_result_path(output_dir, dataset, approach_key)
+    result_path = get_result_path(output_dir, dataset, approach)
     return result_path.exists()
 
 
-def save_approach_results(output_dir, dataset, approach_key, results):
+def save_approach_results(output_dir, dataset, approach, results):
     """Save results for a dataset+approach."""
-    result_path = get_result_path(output_dir, dataset, approach_key)
+    result_path = get_result_path(output_dir, dataset, approach)
     result_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(result_path, 'wb') as f:
         pickle.dump(results, f)
 
 
-def load_approach_results(output_dir, dataset, approach_key):
+def load_approach_results(output_dir, dataset, approach):
     """Load results for a dataset+approach."""
-    result_path = get_result_path(output_dir, dataset, approach_key)
+    result_path = get_result_path(output_dir, dataset, approach)
 
     with open(result_path, 'rb') as f:
         return pickle.load(f)
@@ -79,10 +84,9 @@ def process_dataset_approach(dataset: str, approach: Approach,
     Returns:
         True if processed, False if skipped, None if error/missing
     """
-    approach_key = approach.get_approach_key()
-
     # Check if already processed
-    if not force and is_approach_processed(output_dir, dataset, approach_key):
+    # Pass the approach object so it can use get_full_approach_key() which includes ranking mode
+    if not force and is_approach_processed(output_dir, dataset, approach):
         return False
 
     processed_dir = f"{data_dir}/{dataset}/Processed/"
@@ -124,7 +128,7 @@ def process_dataset_approach(dataset: str, approach: Approach,
         **approach.get_metadata()  # Includes all approach configuration
     }
 
-    save_approach_results(output_dir, dataset, approach_key, results)
+    save_approach_results(output_dir, dataset, approach, results)
     return True
 
 
@@ -153,9 +157,17 @@ def load_experiment_config(config_path):
     config.setdefault('output_dir', None)  # Will be set based on JSON location if not specified
     config.setdefault('window_sec', 60)
     config.setdefault('min_coactions', 1)
+    config.setdefault('ranking_mode', 'L2')  # Default to max (current behavior)
     config.setdefault('datasets', None)  # None means all datasets
     config.setdefault('approaches', None)  # None means all approaches
     config.setdefault('force', False)
+
+    # Validate ranking_mode (should be string - per-approach modes are now in approach keys)
+    ranking_mode = config['ranking_mode']
+    if not isinstance(ranking_mode, str):
+        raise ValueError(f"ranking_mode must be a string ('L1', 'L2', or 'Linf'), got {type(ranking_mode).__name__}")
+    if ranking_mode not in ('L1', 'L2', 'Linf'):
+        raise ValueError(f"Invalid ranking_mode: {ranking_mode}. Must be 'L1', 'L2', or 'Linf'")
 
     # Convert null datasets to all datasets
     if config['datasets'] is None:
@@ -181,9 +193,23 @@ Example configuration file (experiment.json):
   "output_dir": null,
   "window_sec": 60,
   "min_coactions": 1,
+  "ranking_mode": "Linf",
   "datasets": ["Armenia", "Thailand"],
   "approaches": ["coretweets", "ignoring_tweet_fast"],
   "force": false
+}
+
+Example with per-approach ranking modes (embedded in approach keys):
+{
+  "name": "compare_ranking_modes",
+  "ranking_mode": "L1",
+  "approaches": [
+    "coretweets[L1]",
+    "coretweets[L2]",
+    "coretweets[Linf]",
+    "lexicographic:coretweets[L1]+ignoring_tweet_fast[Linf]"
+  ],
+  "datasets": ["Armenia"]
 }
 
 Notes:
@@ -191,6 +217,10 @@ Notes:
   as the JSON file with structure: {json_dir}/{name}/results/{dataset}/
 - If datasets is null or omitted, all datasets will be processed
 - If approaches is null or omitted, all approaches will be used
+- ranking_mode is a default for approaches without explicit mode in their key
+- Specify ranking mode in approach key: "approach[mode]" or 
+  "lexicographic:approach1[mode1]+approach2[mode2]+..."
+- Examples: "coretweets[L1]", "lexicographic:coretweets[L1]+ignoring_tweet_fast[Linf]"
         """
     )
     parser.add_argument(
@@ -237,11 +267,14 @@ Notes:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Create approach instances
+    # Ranking modes can now be specified in approach keys like "coretweets[sum]"
+    ranking_mode = config['ranking_mode']
+    
     if config['approaches'] is not None:
-        approaches = [ApproachFactory.create(key, window_sec, min_coactions)
+        approaches = [ApproachFactory.create(key, window_sec, min_coactions, ranking_mode)
                      for key in config['approaches']]
     else:
-        approaches = ApproachFactory.get_all_approaches(window_sec, min_coactions)
+        approaches = ApproachFactory.get_all_approaches(window_sec, min_coactions, ranking_mode)
 
     # List mode
     if args.list:
@@ -252,10 +285,10 @@ Notes:
         for dataset in datasets:
             print(f"\n{dataset}:")
             for approach in approaches:
-                processed = is_approach_processed(output_dir, dataset,
-                                                 approach.get_approach_key())
+                processed = is_approach_processed(output_dir, dataset, approach)
                 status = "✓ PROCESSED" if processed else "✗ NOT PROCESSED"
-                print(f"  {approach.get_approach_name():40s} {status}")
+                mode_info = f" ({approach.ranking_mode})" if approach.ranking_mode != 'max' else ""
+                print(f"  {approach.get_approach_name():40s}{mode_info:10s} {status}")
         print()
         return
 
@@ -269,9 +302,12 @@ Notes:
     print(f"  Output directory: {output_dir}")
     print(f"  Window: {window_sec} seconds")
     print(f"  Min co-actions: {min_coactions}")
+    print(f"  Default ranking mode: {ranking_mode}")
     print(f"  Force reprocess: {force}")
     print(f"  Datasets: {len(datasets)}")
     print(f"  Approaches: {len(approaches)}")
+    for approach in approaches:
+        print(f"    {approach.get_approach_name()}: ranking_mode={approach.ranking_mode}")
     print(f"  Total combinations: {len(datasets) * len(approaches)}")
 
     processed_count = 0

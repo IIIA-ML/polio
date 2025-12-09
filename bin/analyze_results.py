@@ -12,603 +12,123 @@ This script:
 7. Generates critical difference diagrams
 """
 
-import os
 import sys
-import json
-import pickle
 import argparse
 from pathlib import Path
-from collections import defaultdict
-
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy import stats
-import scikit_posthocs as sp
-from aeon.visualisation import plot_critical_difference
-from sympy import true
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from synchronous_repeated_detection import plot_comparison, _compute_curve
 from approaches import ApproachFactory
+from analysis import (
+    load_experiment_config,
+    load_all_results,
+    compute_score,
+    compute_rankings_with_ties,
+    count_io_until_first_nonio,
+    users_until_reaching_io_fraction,
+    wilcoxon_signed_rank_test,
+    friedman_test,
+    nemenyi_test,
+    plot_method_comparison,
+    plot_critical_difference_diagram,
+)
+from analysis.reporting import write_metric_summary, write_general_summary
 
 
-def load_experiment_config(config_path):
+def process_dataset(dataset_name, dataset_results, approach_keys, approach_names,
+                    plots_dir, current_metric, generate_plots):
     """
-    Load experiment configuration from JSON file.
-
-    Args:
-        config_path: Path to JSON configuration file
-
-    Returns:
-        Dictionary with experiment configuration
-
-    Raises:
-        ValueError: If configuration is invalid
-    """
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-
-    # Validate required fields
-    if 'name' not in config:
-        raise ValueError("Configuration must include 'name' field")
-
-    return config
-
-
-def load_all_results(results_dir, approach_keys, approach_storage_keys):
-    """
-    Load all result files from the results directory.
-
-    Args:
-        results_dir: Path to results directory
-        approach_keys: List of approach keys from config (for result dict keys)
-        approach_storage_keys: List of storage keys (for filenames)
-
-    Returns:
-        dict: {dataset_name: {approach_key: results_dict}}
-    """
-    results_path = Path(results_dir)
-
-    if not results_path.exists():
-        print(f"ERROR: Results directory {results_dir} does not exist.")
-        return {}
-
-    all_results = defaultdict(dict)
-
-    # Scan for dataset directories
-    for dataset_dir in results_path.iterdir():
-        if not dataset_dir.is_dir():
-            continue
-
-        dataset_name = dataset_dir.name
-
-        # Load each approach file using storage key for filename
-        for approach_key, storage_key in zip(approach_keys, approach_storage_keys):
-            pkl_file = dataset_dir / f"{storage_key}.pkl"
-
-            if pkl_file.exists():
-                try:
-                    with open(pkl_file, 'rb') as f:
-                        all_results[dataset_name][approach_key] = pickle.load(f)
-                except Exception as e:
-                    print(f"WARNING: Failed to load {pkl_file}: {e}")
-
-    return dict(all_results)
-
-
-def compute_area_under_curve(suspicious_users, io_users, x_max):
-    """
-    Compute normalized area under the detection curve.
-
-    Returns area as a fraction of the ideal area (higher is better).
-
-    Args:
-        suspicious_users: List of lists of user IDs grouped by score level
-        io_users: Set/list of known inauthentic user IDs
-    """
-    if not suspicious_users:
-        return 0.0
-
-    x_vals, y_vals = _compute_curve(suspicious_users, set(io_users))
-    if x_vals[-1] > x_max-1:
-        x_vals = x_vals[:x_max]
-        y_vals = y_vals[:x_max]
-    # Total users and IO users in suspicious_users
-    ordered_users = []
-    seen = set()
-    # Collect users in original order, without duplicates
-    for group in suspicious_users:
-        for u in group:
-            if u not in seen:
-                ordered_users.append(u)
-                seen.add(u)
-    # Truncate while preserving order
-    users_in_suspicious = ordered_users[:x_max]
-    total_users = len(users_in_suspicious)
-    
-    #total_io = len(set(io_users))  # If we want to consider all IO users in Retweet dataset
-    total_io = y_vals[-1]
-    
-    if total_io == 0:
-        return 1.0
-
-    # Compute areas
-    area_obtained = float(np.sum(y_vals))
-    area_ideal = float(np.sum([min(x, total_io) for x in range(total_users + 1)]))
-
-    if area_ideal == 0:
-        return 1.0
-
-    # Return as fraction of ideal (0 to 1, higher is better)
-    return area_obtained / area_ideal
-
-
-def compute_rankings_with_ties(scores):
-    """
-    Compute rankings from scores, assigning the same rank to tied scores.
-
-    Uses standard competition ranking (1224 ranking): if two items are tied for
-    first place, they both get rank 1, and the next item gets rank 3.
-
-    Args:
-        scores: Dictionary mapping names to scores (higher is better)
-
-    Returns:
-        Dictionary mapping names to ranks (1 = best)
-    """
-    # Sort by score (descending)
-    sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-    rankings = {}
-    current_rank = 1
-
-    for i, (name, score) in enumerate(sorted_items):
-        # Check if this score is tied with the previous one
-        if i > 0 and abs(score - sorted_items[i-1][1]) < 1e-10:
-            # Same score as previous, use same rank
-            rankings[name] = rankings[sorted_items[i-1][0]]
-        else:
-            # New score, use current rank (which accounts for ties)
-            rankings[name] = current_rank
-
-        # Increment rank for next iteration
-        current_rank = i + 2
-
-    return rankings
-
-
-def plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, output_dir):
-    """
-    Generate comparison plots for all methods on a dataset.
+    Process a single dataset: compute scores, rankings, and optionally generate plots.
 
     Args:
         dataset_name: Name of the dataset
         dataset_results: Dictionary of results for each approach
-        approach_keys: List of approach keys in the experiment
+        approach_keys: List of approach keys
         approach_names: Dictionary mapping approach keys to display names
-        output_dir: Directory to save plots
+        plots_dir: Directory to save plots
+        current_metric: Metric to use for scoring
+        generate_plots: Whether to generate comparison plots
+
+    Returns:
+        Tuple of (rankings, scores, first_nonio_counts, users_to_80pct) or (None, None, None, None)
     """
+    print(f"\nProcessing: {dataset_name}")
+
     # Check if all approaches are available
     if not all(approach_key in dataset_results for approach_key in approach_keys):
-        print(f"  WARNING: Not all approaches available for {dataset_name}, skipping plot")
-        return None
+        missing = [key for key in approach_keys if key not in dataset_results]
+        print(f"  WARNING: Incomplete results, skipping (missing: {', '.join(missing)})")
+        return None, None, None, None
 
-    # Get IO users from first available approach
+    # Get method names
+    method_names = [approach_names[key] for key in approach_keys]
+
+    # Compute scores for all methods
     first_approach = approach_keys[0]
     io_users = set(dataset_results[first_approach]['io_users'])
-
-    # Extract suspicious_users for each method
-    methods = {
-        approach_names[approach_key]: dataset_results[approach_key]['suspicious_users']
+    
+    # Find minimum x_max across all approaches
+    x_max = float('inf')
+    for k in approach_keys:
+        x_max_approach = len(set([u for group in dataset_results[k]['suspicious_users'] for u in group]))
+        x_max = min(x_max, x_max_approach)
+    
+    scores = {
+        approach_names[approach_key]: compute_score(
+            dataset_results[approach_key]['suspicious_users'], io_users, x_max, metric=current_metric
+        )
         for approach_key in approach_keys
     }
 
-    # Determine grid size based on number of approaches
-    n_methods = len(methods)
-    if n_methods <= 2:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        axes = axes.flatten()
-    elif n_methods <= 4:
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        axes = axes.flatten()
+    # Compute additional evaluations for this dataset
+    first_nonio_counts = {
+        approach_names[approach_key]: count_io_until_first_nonio(
+            dataset_results[approach_key]['suspicious_users'], io_users
+        )
+        for approach_key in approach_keys
+    }
+
+    users_to_80pct = {
+        approach_names[approach_key]: users_until_reaching_io_fraction(
+            dataset_results[approach_key]['suspicious_users'], io_users, fraction=0.8
+        )
+        for approach_key in approach_keys
+    }
+
+    # Generate plot or just compute rankings
+    if generate_plots:
+        rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, 
+                                         approach_names, plots_dir, metric=current_metric)
     else:
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-        axes = axes.flatten()
+        # Just compute rankings without plotting
+        rankings = compute_rankings_with_ties(scores)
 
-    fig.suptitle(f'Method Comparison - {dataset_name}', fontsize=16, fontweight='bold')
+    if rankings is None:
+        return None, None, None, None
 
-    # Use first method as baseline
-    baseline_name = list(methods.keys())[0]
-    baseline_suspicious = methods[baseline_name]
-
-    # Plot each method vs baseline (except baseline itself)
-    plot_idx = 0
-    for method_name, suspicious_users in methods.items():
-        if method_name == baseline_name:
-            continue
-
-        if plot_idx >= len(axes) - 1:
-            break
-
-        ax = axes[plot_idx]
-
-        # Compute curves
-        x1, y1 = _compute_curve(suspicious_users, io_users)
-        x2, y2 = _compute_curve(baseline_suspicious, io_users)
-
-        if x1[-1] > x2[-1]:
-            x1 = x1[:x2[-1]+1]
-            y1 = y1[:x2[-1]+1]
-        elif x2[-1] > x1[-1]:
-            x2 = x2[:x1[-1]+1]
-            y2 = y2[:x1[-1]+1]
-        
-        x_max = len(x2)
-
-        # Calculate differences
-        diff = y1 - y2
-        total_area = np.sum(diff)
-        negative_area = np.sum(np.minimum(0, diff))
-
-        # Plot
-        ax.plot(x1, y1, label=method_name, linewidth=2)
-        ax.plot(x2, y2, label=f'{baseline_name} (baseline)', linewidth=2, linestyle='--')
-
-        ax.set_xlabel("Number of users studied")
-        ax.set_ylabel("Number of IO users detected")
-        ax.set_title(f'{method_name} vs {baseline_name}')
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-
-        # Add text box with area information
-        textstr = f'Total area diff: {total_area:.2f}\n'
-        textstr += f'Negative area: {negative_area:.2f}'
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-        ax.text(0.65, 0.25, textstr, transform=ax.transAxes,
-                fontsize=9, verticalalignment='top', bbox=props)
-
-        plot_idx += 1
-
-    # Hide any unused subplots (except the last one which we use for summary)
-    for i in range(plot_idx, len(axes) - 1):
-        axes[i].axis('off')
-
-    # Use the last subplot for summary statistics
-    ax = axes[-1]
-    ax.axis('off')
-
-    # Compute area scores for all methods
-    scores = {}
-    for name, pairs in methods.items():
-        scores[name] = compute_area_under_curve(pairs, io_users, x_max)
-
-    # Compute rankings with proper tie handling
-    rankings = compute_rankings_with_ties(scores)
-
-    # Sort by score for display
-    sorted_methods = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-    # Display summary
-    summary_text = "Performance Summary\n" + "="*30 + "\n\n"
-    summary_text += "Method Rankings (by AUC):\n\n"
-
-    for name, score in sorted_methods:
-        rank = rankings[name]
-        summary_text += f"{rank}. {name:20s} {score:.4f}\n"
-
-    # Get dataset info from first approach results
-    first_approach = approach_keys[0]
-    first_result = dataset_results[first_approach]
-    users_in_suspicious = set([u for group in first_result['suspicious_users'] for u in group])
-
-    summary_text += f"\n\nDataset Info:\n"
-    summary_text += f"Total users: {len(users_in_suspicious)}\n"
-    summary_text += f"IO users: {len(io_users)}\n"
-    summary_text += f"Score groups: {first_result['num_suspicious_groups']}\n"
-
-    ax.text(0.1, 0.9, summary_text, transform=ax.transAxes,
-            fontsize=10, verticalalignment='top', family='monospace',
-            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
-
-    plt.tight_layout()
-
-    # Save figure
-    output_path = Path(output_dir) / f"{dataset_name}_comparison.png"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-
-    print(f"  Saved plot: {output_path}")
-
-    # Return rankings for this dataset
-    return rankings
+    # Return data in consistent order
+    return (
+        [rankings[method] for method in method_names],
+        [scores[method] for method in method_names],
+        [first_nonio_counts[method] for method in method_names],
+        [(users_to_80pct[method] if users_to_80pct[method] is not None else -1) for method in method_names]
+    )
 
 
-def wilcoxon_signed_rank_test(scores_method1, scores_method2):
+def display_results(dataset_names, method_names, rankings_matrix, scores_matrix, metric_display):
     """
-    Perform Wilcoxon signed-rank test for paired samples.
-
-    This test is appropriate when comparing exactly two methods across multiple datasets.
-    It tests whether the median difference between paired observations is zero.
+    Display rankings and scores matrices to console.
 
     Args:
-        scores_method1: Array of scores for method 1 across datasets
-        scores_method2: Array of scores for method 2 across datasets
-
-    Returns:
-        statistic, p_value, median_diff
-    """
-    # Compute differences
-    differences = scores_method1 - scores_method2
-    median_diff = np.median(differences)
-
-    # Perform Wilcoxon signed-rank test
-    # alternative='two-sided' tests if the distributions differ
-    statistic, p_value = stats.wilcoxon(scores_method1, scores_method2,
-                                        alternative='two-sided', zero_method='wilcox')
-
-    return statistic, p_value, median_diff
-
-
-def friedman_test(rankings_matrix):
-    """
-    Perform Friedman test on rankings matrix.
-
-    Args:
-        rankings_matrix: 2D array where rows are datasets and columns are methods
-
-    Returns:
-        statistic, p_value
-    """
-    return stats.friedmanchisquare(*rankings_matrix.T)
-
-
-def nemenyi_test(rankings_matrix, method_names):
-    """
-    Perform Nemenyi post-hoc test using scikit-posthocs.
-
-    The Nemenyi test is used for pairwise comparisons after a significant Friedman test.
-    It returns p-values for all pairwise comparisons.
-    
-    Args:
-        rankings_matrix: 2D array where rows are datasets and columns are methods
+        dataset_names: List of dataset names
         method_names: List of method names
-
-    Returns:
-        avg_ranks: Average rank for each method
-        cd: Critical difference value
-        pvalues_matrix: Matrix of p-values for pairwise comparisons
+        rankings_matrix: 2D array of rankings
+        scores_matrix: 2D array of scores
+        metric_display: Display name of metric
     """
-    n_datasets, n_methods = rankings_matrix.shape
-
-    # Compute average ranks
-    avg_ranks = np.mean(rankings_matrix, axis=0)
-
-    # Perform Nemenyi post-hoc test using scikit-posthocs
-    # The function expects data in the format: rows=observations, columns=groups
-    # This matches our rankings_matrix format
-    pvalues_matrix = sp.posthoc_nemenyi_friedman(rankings_matrix)
-    
-    # Convert DataFrame to numpy array if needed
-    if hasattr(pvalues_matrix, 'values'):
-        pvalues_matrix = pvalues_matrix.values
-
-    # Calculate critical difference for visualization
-    # CD = q_alpha * sqrt(k(k+1) / (6N))
-    # where q_alpha is from studentized range distribution
-    from scipy.stats import studentized_range
-    q_alpha = studentized_range.ppf(0.95, n_methods, np.inf)
-    cd = q_alpha * np.sqrt(n_methods * (n_methods + 1) / (6 * n_datasets))
-
-    return avg_ranks, cd, pvalues_matrix
-
-
-def plot_critical_difference_diagram(scores_matrix, method_names, output_path, lower_better=False):
-    """
-    Generate critical difference diagram (CD diagram) using aeon library.
-
-    This function uses the standard aeon.visualisation.plot_critical_difference
-    which properly handles statistical testing and visualization.
-    
-    Args:
-        scores_matrix: 2D array where rows are datasets and columns are methods (raw scores, not ranks)
-        method_names: List of method names
-        output_path: Path to save the diagram
-        lower_better: If True, lower scores are better (e.g., error rates).
-                     If False, higher scores are better (e.g., accuracy, AUC)
-    """
-    # Set figure size - using width parameter for better control
-    # Adjust size based on number of methods for readability
-    n_methods = len(method_names)
-    fig_width = max(6, n_methods * 0.8)
-    fig_height = max(5, n_methods * 0.6)
-    
-    plt.figure(figsize=(fig_width, fig_height))
-    
-    # Generate the critical difference diagram using aeon
-    # test='nemenyi' uses the Nemenyi post-hoc test
-    # correction='holm' applies Holm correction for multiple comparisons
-    plot_critical_difference(
-        scores_matrix,
-        method_names,
-        lower_better=lower_better,
-        test='nemenyi',
-        correction='holm',
-    )
-    
-    # Get the current axes for customization
-    ax = plt.gca()
-    
-    # Adjust margins to provide more space for labels
-    plt.subplots_adjust(bottom=0.25, left=0.1, right=0.95)
-    
-    # Optionally adjust figure size if needed (workaround for size issues)
-    fig = plt.gcf()
-    fig.set_size_inches(fig_width, fig_height)
-    
-    # Save and close
-    plt.savefig(output_path, format='png', bbox_inches='tight', dpi=300)
-    plt.close()
-    
-    print(f"\nCritical difference diagram saved: {output_path}")
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze experiment results and perform statistical comparisons",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Example usage:
-  uv run bin/analyze_results.py experiments/my_experiment.json
-  uv run bin/analyze_results.py experiments/my_experiment.json --no-plots
-
-The script will:
-1. Load the experiment configuration from the JSON file
-2. Load results from {json_dir}/{experiment_name}/results/
-3. Save analysis to {json_dir}/{experiment_name}/analysis/
-        """
-    )
-    parser.add_argument(
-        'config',
-        help='Path to experiment JSON configuration file'
-    )
-    parser.add_argument(
-        '--no-plots',
-        action='store_true',
-        help='Skip generating individual comparison plots'
-    )
-
-    args = parser.parse_args()
-
-    # Load experiment configuration
-    try:
-        config = load_experiment_config(args.config)
-    except FileNotFoundError:
-        print(f"Error: Configuration file not found: {args.config}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in configuration file: {e}")
-        sys.exit(1)
-    except ValueError as e:
-        print(f"Error: Invalid configuration: {e}")
-        sys.exit(1)
-
-    # Determine experiment directory based on JSON location
-    config_path = Path(args.config).resolve()
-    json_dir = config_path.parent
-    experiment_dir = json_dir / config['name']
-
-    # Set results and output directories
-    results_dir = experiment_dir / "results"
-    output_dir = experiment_dir / "analysis"
-
-    # Get approaches from config, or use all if not specified
-    if config.get('approaches') is not None:
-        approach_keys = config['approaches']
-    else:
-        # Get all available approaches
-        approach_keys = ApproachFactory.get_all_keys()
-
-    # Create approach instances to get storage keys and display names
-    approach_instances = []
-    approach_storage_keys = []
-    approach_names = {}
-
-    for key in approach_keys:
-        approach = ApproachFactory.create(key, window_sec=60, min_coactions=1)
-        approach_instances.append(approach)
-        storage_key = approach.get_approach_key()
-        approach_storage_keys.append(storage_key)
-        approach_names[key] = approach.get_approach_name()
-
-    print("="*70)
-    print("EXPERIMENT RESULTS ANALYSIS")
-    print("="*70)
-    print(f"\nExperiment: {config['name']}")
-    print(f"Configuration file: {args.config}")
-    print(f"Experiment directory: {experiment_dir}")
-    print(f"Results directory: {results_dir}")
-    print(f"Analysis output: {output_dir}")
-    print(f"Approaches: {', '.join(approach_keys)}")
-
-    # Load all results
-    print(f"\nLoading results...")
-    all_results = load_all_results(results_dir, approach_keys, approach_storage_keys)
-
-    if not all_results:
-        print(f"ERROR: No results found in {results_dir}!")
-        print("Have you run the experiment first using run_experiments.py?")
-        return
-
-    print(f"Loaded {len(all_results)} datasets")
-
-    # Method names (in consistent order)
-    method_names = [approach_names[key] for key in approach_keys]
-
-    # Store rankings and scores for each dataset
-    all_rankings = []
-    all_scores = []  # Store AUC scores for each dataset
-    dataset_names = []
-
-    # Generate plots and collect rankings
-    if not args.no_plots:
-        print(f"\nGenerating comparison plots...")
-        plots_dir = Path(output_dir) / "plots"
-        plots_dir.mkdir(parents=True, exist_ok=True)
-
-    for dataset_name, dataset_results in sorted(all_results.items()):
-        print(f"\nProcessing: {dataset_name}")
-
-        # Check if all approaches are available
-        if not all(approach_key in dataset_results for approach_key in approach_keys):
-            missing = [key for key in approach_keys if key not in dataset_results]
-            print(f"  WARNING: Incomplete results, skipping (missing: {', '.join(missing)})")
-            continue
-
-        # Compute scores for all methods
-        first_approach = approach_keys[0]
-        io_users = set(dataset_results[first_approach]['io_users'])
-        
-        x_max = float('inf')
-        for k in approach_keys:
-            x_max_approach = len(set([u for group in dataset_results[k]['suspicious_users'] for u in group]))
-            x_max = min(x_max, x_max_approach)
-        
-        scores = {
-            approach_names[approach_key]: compute_area_under_curve(
-                dataset_results[approach_key]['suspicious_users'], io_users, x_max
-            )
-            for approach_key in approach_keys
-        }
-
-        # Generate plot or just compute rankings
-        if not args.no_plots:
-            rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, approach_names, plots_dir)
-        else:
-            # Just compute rankings without plotting
-            rankings = compute_rankings_with_ties(scores)
-
-        if rankings is None:
-            continue
-
-        # Store rankings and scores in consistent order
-        dataset_rankings = [rankings[method] for method in method_names]
-        dataset_scores = [scores[method] for method in method_names]
-        all_rankings.append(dataset_rankings)
-        all_scores.append(dataset_scores)
-        dataset_names.append(dataset_name)
-
-    if len(all_rankings) == 0:
-        print("\nERROR: No complete datasets found for analysis!")
-        return
-
-    # Convert to numpy arrays
-    rankings_matrix = np.array(all_rankings)
-    scores_matrix = np.array(all_scores)
-
     print("\n" + "="*70)
     print("STATISTICAL ANALYSIS")
     print("="*70)
@@ -625,7 +145,7 @@ The script will:
     print(f"\n{'Average Rank':<20} " + " ".join([f"{r:>18.2f}" for r in avg_ranks]))
 
     # Display scores matrix
-    print("\n\nAUC Scores Matrix:")
+    print(f"\n\n{metric_display} Scores Matrix:")
     print(f"{'Dataset':<20} " + " ".join([f"{m:>18}" for m in method_names]))
     print("-" * (20 + 19 * len(method_names)))
     for dataset, scores in zip(dataset_names, scores_matrix):
@@ -633,11 +153,25 @@ The script will:
 
     # Compute average scores
     avg_scores = np.mean(scores_matrix, axis=0)
-    print(f"\n{'Average AUC':<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]))
+    print(f"\n{'Average ' + metric_display:<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]))
 
-    # Choose appropriate statistical test based on number of methods
+
+def perform_statistical_tests(rankings_matrix, scores_matrix, method_names, metric_display):
+    """
+    Perform appropriate statistical tests based on number of methods.
+
+    Args:
+        rankings_matrix: 2D array of rankings
+        scores_matrix: 2D array of scores
+        method_names: List of method names
+        metric_display: Display name of metric
+
+    Returns:
+        Tuple of (statistic, p_value, n_methods, median_diff, cd, pvalues_matrix, avg_ranks)
+    """
     n_methods = len(method_names)
-
+    avg_ranks = np.mean(rankings_matrix, axis=0)
+    
     if n_methods == 2:
         # Use Wilcoxon signed-rank test for two methods
         print("\n" + "-"*70)
@@ -650,7 +184,7 @@ The script will:
 
         print(f"Test statistic: {statistic:.4f}")
         print(f"P-value: {p_value:.6f}")
-        print(f"Median difference (AUC): {median_diff:.4f}")
+        print(f"Median difference ({metric_display}): {median_diff:.4f}")
         print(f"\nMethod 1: {method_names[0]}")
         print(f"Method 2: {method_names[1]}")
 
@@ -662,9 +196,7 @@ The script will:
         else:
             print("\nResult: No significant difference detected (p >= 0.05)")
 
-        # No post-hoc test needed for two methods
-        cd = None
-        sig_matrix = None
+        return statistic, p_value, n_methods, median_diff, None, None, avg_ranks
 
     else:
         # Use Friedman test for more than two methods
@@ -725,124 +257,206 @@ The script will:
         print("Generating Critical Difference Diagram...")
         print("-"*70)
 
-        cd_path = Path(output_dir) / "critical_difference_diagram.png"
-        # Note: scores_matrix contains AUC scores where higher is better, so lower_better=False
-        plot_critical_difference_diagram(scores_matrix, method_names, cd_path, lower_better=False)
+        return statistic, p_value, n_methods, None, cd, pvalues_matrix, avg_ranks
 
-    # Save summary report
-    summary_path = Path(output_dir) / "summary.txt"
-    with open(summary_path, 'w') as f:
-        f.write("="*70 + "\n")
-        f.write("EXPERIMENT RESULTS ANALYSIS SUMMARY\n")
-        f.write("="*70 + "\n\n")
 
-        f.write(f"Experiment: {config['name']}\n")
-        f.write(f"Number of datasets: {len(dataset_names)}\n")
-        f.write(f"Methods compared: {len(method_names)}\n\n")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze experiment results and perform statistical comparisons",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example usage:
+  uv run bin/analyze_results.py experiments/my_experiment.json
+  uv run bin/analyze_results.py experiments/my_experiment.json --no-plots
 
-        f.write("Methods:\n")
-        for i, (key, name) in enumerate(zip(approach_keys, method_names), 1):
-            f.write(f"  {i}. {name} ({key})\n")
-        f.write("\n")
+The script will:
+1. Load the experiment configuration from the JSON file
+2. Load results from {json_dir}/{experiment_name}/results/
+3. Save analysis to {json_dir}/{experiment_name}/analysis/
+        """
+    )
+    parser.add_argument(
+        'config',
+        help='Path to experiment JSON configuration file'
+    )
+    parser.add_argument(
+        '--no-plots',
+        action='store_true',
+        help='Skip generating individual comparison plots'
+    )
+    parser.add_argument(
+        '--metric',
+        type=str,
+        default='auc',
+        choices=['auc', 'ndcg', 'ap', 'all'],
+        help='Metric to use for evaluation (default: auc). '
+             'Options: auc (sklearn ROC-AUC), ndcg (sklearn NDCG), '
+             'ap (sklearn Average Precision), all (compute all three metrics)'
+    )
 
-        f.write("=" * 70 + "\n")
-        f.write("AUC SCORES MATRIX\n")
-        f.write("=" * 70 + "\n\n")
+    args = parser.parse_args()
+
+    # Load experiment configuration
+    try:
+        config = load_experiment_config(args.config)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found: {args.config}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: Invalid configuration: {e}")
+        sys.exit(1)
+
+    # Determine experiment directory based on JSON location
+    config_path = Path(args.config).resolve()
+    json_dir = config_path.parent
+    experiment_dir = json_dir / config['name']
+
+    # Set results directory
+    results_dir = experiment_dir / "results"
+    
+    # Determine which metrics to process
+    if args.metric == 'all':
+        metrics_to_process = ['auc', 'ndcg', 'ap']
+        print(f"\nProcessing all metrics: {', '.join(metrics_to_process)}")
+    else:
+        metrics_to_process = [args.metric]
+    
+    # Get approaches from config, or use all if not specified
+    if config.get('approaches') is not None:
+        approach_keys = config['approaches']
+    else:
+        # Get all available approaches
+        approach_keys = ApproachFactory.get_all_keys()
+
+    # Create approach instances to get storage keys and display names
+    approach_storage_keys = []
+    approach_names = {}
+
+    for key in approach_keys:
+        approach = ApproachFactory.create(key, window_sec=60, min_coactions=1)
+        storage_key = approach.get_full_approach_key()  # Use full key to include ranking mode suffix
+        approach_storage_keys.append(storage_key)
+        approach_names[key] = approach.get_full_approach_name()  # Use full name to include ranking mode
+
+    # Process each metric
+    for current_metric in metrics_to_process:
+        # Set output directory for this metric
+        output_dir = experiment_dir / "analysis" / current_metric
         
-        # Create header
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
-        f.write(header + "\n")
-        f.write("-" * len(header) + "\n")
-        
-        # Write each dataset's scores
-        for dataset, scores in zip(dataset_names, scores_matrix):
-            f.write(f"{dataset:<20} " + " ".join([f"{s:>18.4f}" for s in scores]) + "\n")
-        
-        f.write("\n")
-        f.write(f"{'Average AUC':<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]) + "\n")
-        f.write("\n\n")
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        f.write("=" * 70 + "\n")
-        f.write("RANKINGS MATRIX\n")
-        f.write("=" * 70 + "\n\n")
-        
-        # Create header
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
-        f.write(header + "\n")
-        f.write("-" * len(header) + "\n")
-        
-        # Write each dataset's rankings
-        for dataset, ranks in zip(dataset_names, rankings_matrix):
-            f.write(f"{dataset:<20} " + " ".join([f"{r:>18.0f}" for r in ranks]) + "\n")
-        
-        f.write("\n")
-        f.write(f"{'Average Rank':<20} " + " ".join([f"{r:>18.2f}" for r in avg_ranks]) + "\n")
-        f.write("\n\n")
+        print("\n" + "="*70)
+        print("EXPERIMENT RESULTS ANALYSIS")
+        print("="*70)
+        print(f"\nExperiment: {config['name']}")
+        print(f"Configuration file: {args.config}")
+        print(f"Experiment directory: {experiment_dir}")
+        print(f"Results directory: {results_dir}")
+        print(f"Analysis output: {output_dir}")
+        print(f"Metric: {current_metric}")
+        print(f"Approaches: {', '.join(approach_keys)}")
 
-        f.write("=" * 70 + "\n")
-        f.write("STATISTICAL TESTS\n")
-        f.write("=" * 70 + "\n\n")
+        # Load all results (only once, reuse for all metrics)
+        if current_metric == metrics_to_process[0]:
+            print(f"\nLoading results...")
+            all_results = load_all_results(results_dir, approach_keys, approach_storage_keys)
 
-        if n_methods == 2:
-            f.write(f"Wilcoxon Signed-Rank Test:\n")
-            f.write(f"  Test statistic: {statistic:.4f}\n")
-            f.write(f"  P-value: {p_value:.6f}\n")
-            f.write(f"  Median difference (AUC): {median_diff:.4f}\n")
-            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n")
-            if p_value < 0.05:
-                winner = method_names[0] if median_diff > 0 else method_names[1]
-                f.write(f"  Winner: {winner}\n")
+            if not all_results:
+                print(f"ERROR: No results found in {results_dir}!")
+                print("Have you run the experiment first using run_experiments.py?")
+                return
+
+            print(f"Loaded {len(all_results)} datasets")
+
+        # Method names (in consistent order)
+        method_names = [approach_names[key] for key in approach_keys]
+
+        # Store rankings and scores for each dataset
+        all_rankings = []
+        all_scores = []
+        dataset_names = []
+        all_first_nonio_counts = []
+        all_users_to_80pct = []
+
+        # Generate plots and collect rankings
+        if not args.no_plots:
+            print(f"\nGenerating comparison plots...")
+            plots_dir = Path(output_dir) / "plots"
+            plots_dir.mkdir(parents=True, exist_ok=True)
         else:
-            f.write(f"Friedman Test:\n")
-            f.write(f"  Chi-square: {statistic:.4f}\n")
-            f.write(f"  P-value: {p_value:.6f}\n")
-            f.write(f"  Significant: {'Yes' if p_value < 0.05 else 'No'}\n\n")
+            plots_dir = None
 
-            f.write(f"Nemenyi Post-hoc Test:\n")
-            f.write(f"  Critical Difference: {cd:.4f}\n\n")
+        for dataset_name, dataset_results in sorted(all_results.items()):
+            rankings, scores, first_nonio, users80 = process_dataset(
+                dataset_name, dataset_results, approach_keys, approach_names,
+                plots_dir, current_metric, not args.no_plots
+            )
 
-            f.write("  Pairwise P-values:\n")
-            f.write("  (p-value < 0.05 indicates significant difference)\n\n")
-            
-            # Write header for p-values matrix
-            header = "  " + f"{'':>20} " + " ".join([f"{m[:12]:>12}" for m in method_names])
-            f.write(header + "\n")
-            
-            # Write each row of p-values
-            for i, name_i in enumerate(method_names):
-                row = "  " + f"{name_i[:20]:<20} "
-                for j in range(len(method_names)):
-                    if i == j:
-                        row += f"{'1.000':>12} "
-                    else:
-                        row += f"{pvalues_matrix[i, j]:>12.4f} "
-                f.write(row + "\n")
-            true
-            # Add significant pairs
-            f.write(f"\n  Significant differences (p < 0.05):\n")
-            sig_pairs = []
-            for i in range(len(method_names)):
-                for j in range(i + 1, len(method_names)):
-                    if pvalues_matrix[i, j] < 0.05:
-                        sig_pairs.append((method_names[i], method_names[j], pvalues_matrix[i, j]))
-            
-            if sig_pairs:
-                for name1, name2, pval in sig_pairs:
-                    f.write(f"    {name1} vs {name2}: p = {pval:.4f}\n")
-            else:
-                f.write("    No significant pairwise differences found\n")
+            if rankings is None:
+                continue
 
-    print(f"\nSummary report saved: {summary_path}")
+            all_rankings.append(rankings)
+            all_scores.append(scores)
+            all_first_nonio_counts.append(first_nonio)
+            all_users_to_80pct.append(users80)
+            dataset_names.append(dataset_name)
+
+        if len(all_rankings) == 0:
+            print("\nERROR: No complete datasets found for analysis!")
+            continue
+
+        # Convert to numpy arrays
+        rankings_matrix = np.array(all_rankings)
+        scores_matrix = np.array(all_scores)
+
+        # Display results
+        metric_display = current_metric.upper()
+        display_results(dataset_names, method_names, rankings_matrix, scores_matrix, metric_display)
+
+        # Perform statistical tests
+        statistic, p_value, n_methods, median_diff, cd, pvalues_matrix, avg_ranks = \
+            perform_statistical_tests(rankings_matrix, scores_matrix, method_names, metric_display)
+
+        # Generate critical difference diagram for multiple methods
+        if n_methods > 2:
+            cd_path = Path(output_dir) / "critical_difference_diagram.png"
+            plot_critical_difference_diagram(scores_matrix, method_names, cd_path, lower_better=False)
+
+        # Save summary report (metric-specific)
+        avg_scores = np.mean(scores_matrix, axis=0)
+        summary_path = Path(output_dir) / "summary.txt"
+        write_metric_summary(
+            summary_path, metric_display, dataset_names, method_names,
+            scores_matrix, rankings_matrix, avg_scores, avg_ranks,
+            statistic, p_value, n_methods, median_diff, cd, pvalues_matrix
+        )
+
+        print(f"\nSummary report saved: {summary_path}")
+
+    # After processing all metrics, create a general summary with metric-independent info
+    general_summary_path = experiment_dir / "analysis" / "summary.txt"
+    write_general_summary(
+        general_summary_path, config['name'], dataset_names, method_names,
+        approach_keys, all_first_nonio_counts, all_users_to_80pct
+    )
+
+    print(f"\nGeneral summary saved: {general_summary_path}")
 
     print("\n" + "="*70)
     print("ANALYSIS COMPLETE")
     print("="*70)
-    print(f"\nOutputs saved to: {output_dir}/")
-    if not args.no_plots:
-        print(f"  - Individual plots: {output_dir}/plots/")
-    if n_methods > 2:
-        print(f"  - CD diagram: {output_dir}/critical_difference_diagram.png")
-    print(f"  - Summary: {output_dir}/summary.txt")
+    print(f"\nOutputs saved to: {experiment_dir / 'analysis'}/")
+    print(f"  - General summary: {general_summary_path}")
+    for metric in metrics_to_process:
+        if args.metric == 'all':
+            metric_dir = experiment_dir / "analysis" / metric
+        else:
+            metric_dir = experiment_dir / "analysis"
+        print(f"  - {metric.upper()} summary: {metric_dir / 'summary.txt'}")
+        if not args.no_plots:
+            print(f"  - {metric.upper()} plots: {metric_dir / 'plots/'}")
+        if n_methods > 2:
+            print(f"  - {metric.upper()} CD diagram: {metric_dir / 'critical_difference_diagram.png'}")
 
 
 if __name__ == '__main__':

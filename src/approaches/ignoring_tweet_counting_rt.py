@@ -63,7 +63,7 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
         active = deque()  # Contains (user, timestamp) tuples
 
         # Track unique (pair, day) combinations
-        pair_days = defaultdict(set)
+        pair_days = {}
 
         # Track unique tweets per user per day: user -> day -> set(tweet_ids)
         user_day_tweets = defaultdict(lambda: defaultdict(set))
@@ -86,6 +86,8 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
                     # Create canonical pair (sorted tuple)
                     pair = tuple(sorted((user_curr, user_active)))
                     # Add this day to the set of days for this pair
+                    if pair not in pair_days:
+                        pair_days[pair] = set()
                     pair_days[pair].add(current_day)
 
             # Add current user to active set
@@ -97,7 +99,11 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
         for i in range(len(unique_users)):
             for j in range(i + 1, len(unique_users)):
                 pair = (unique_users[i], unique_users[j])
-                coinciding_days = pair_days.get(pair, set())
+                
+                if pair in pair_days:
+                    coinciding_days = pair_days[pair]
+                else:
+                    coinciding_days = set()
                 
                 if coinciding_days:
                     union_sum = 0
