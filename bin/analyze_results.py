@@ -338,8 +338,26 @@ The script will:
         approach_storage_keys.append(storage_key)
         approach_names[key] = approach.get_full_approach_name()  # Use full name to include ranking mode
 
+    # Create general plots directory (shared across all metrics)
+    general_plots_dir = experiment_dir / "analysis" / "plots"
+    # Only generate plots on the first metric to avoid redundant work
+    generate_plots = not args.no_plots and args.metric != 'all'
+    
+    if generate_plots and args.metric == 'all':
+        # If processing all metrics, only generate plots once (on first metric)
+        generate_plots = True
+        generate_plots_on_first_metric_only = True
+    else:
+        generate_plots_on_first_metric_only = False
+    
+    if generate_plots or (args.metric == 'all' and not args.no_plots):
+        print(f"\nGenerating comparison plots...")
+        general_plots_dir.mkdir(parents=True, exist_ok=True)
+
     # Process each metric
-    for current_metric in metrics_to_process:
+    for metric_idx, current_metric in enumerate(metrics_to_process):
+        # Only generate plots on first metric if processing all metrics
+        should_generate_plots = not args.no_plots and (args.metric != 'all' or metric_idx == 0)
         # Set output directory for this metric
         output_dir = experiment_dir / "analysis" / current_metric
         
@@ -378,18 +396,13 @@ The script will:
         all_first_nonio_counts = []
         all_users_to_80pct = []
 
-        # Generate plots and collect rankings
-        if not args.no_plots:
-            print(f"\nGenerating comparison plots...")
-            plots_dir = Path(output_dir) / "plots"
-            plots_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            plots_dir = None
+        # Use general plots directory only on first metric if processing all metrics
+        plots_dir = general_plots_dir if should_generate_plots else None
 
         for dataset_name, dataset_results in sorted(all_results.items()):
             rankings, scores, first_nonio, users80 = process_dataset(
                 dataset_name, dataset_results, approach_keys, approach_names,
-                plots_dir, current_metric, not args.no_plots
+                plots_dir, current_metric, should_generate_plots
             )
 
             if rankings is None:

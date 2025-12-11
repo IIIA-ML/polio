@@ -1,0 +1,101 @@
+======================================================================
+EXPERIMENT RESULTS ANALYSIS - GENERAL SUMMARY
+======================================================================
+
+Experiment: coretweets_vs_ignoring_ranking_modes
+Number of datasets: 23
+Methods compared: 2
+
+Methods:
+  1. Vol. (Linf) (coretweets[Linf])
+  2. Cons. (Linf) (ignoring_tweet_fast[Linf])
+
+Datasets:
+  1. Armenia
+  2. Catalonia
+  3. China_1
+  4. China_2
+  5. Cuba
+  6. Ecuador
+  7. Ghana_Nigeria
+  8. Iran_1
+  9. Iran_2
+  10. Iran_3
+  11. Iran_4
+  12. Iran_5
+  13. Iran_6
+  14. Qatar
+  15. Russia_1
+  16. Russia_2
+  17. Russia_3
+  18. Russia_4
+  19. Russia_5
+  20. Spain
+  21. Thailand
+  22. UAE
+  23. Venezuela_2
+
+======================================================================
+IO UNTIL FIRST NON-IO (Counts)
+======================================================================
+
+Dataset                     Vol. (Linf)       Cons. (Linf)
+----------------------------------------------------------
+Armenia                              10                  0
+Catalonia                            21                 35
+China_1                               4                118
+China_2                               3                 33
+Cuba                                 34                319
+Ecuador                              93                171
+Ghana_Nigeria                        12                 22
+Iran_1                               28                328
+Iran_2                               35                 62
+Iran_3                               33                104
+Iran_4                                3                239
+Iran_5                                4                 21
+Iran_6                                8                 36
+Qatar                                 5                 13
+Russia_1                              2               1017
+Russia_2                              4                 40
+Russia_3                              0                  2
+Russia_4                              0                  6
+Russia_5                              0                  8
+Spain                                53                140
+Thailand                             17                 55
+UAE                                 128               2295
+Venezuela_2                          10                 10
+
+Mean                              22.04             220.61
+
+
+======================================================================
+USERS UNTIL 80% IO FOUND
+======================================================================
+
+Dataset                     Vol. (Linf)       Cons. (Linf)
+----------------------------------------------------------
+Armenia                               8                146
+Catalonia                           340                256
+China_1                            1419               4185
+China_2                             667                 46
+Cuba                                779                346
+Ecuador                            1049                216
+Ghana_Nigeria                        62                 20
+Iran_1                              352                292
+Iran_2                              451                155
+Iran_3                              152                102
+Iran_4                             1264               1130
+Iran_5                               27                 18
+Iran_6                              180                 32
+Qatar                               280                 55
+Russia_1                           2867               1531
+Russia_2                            102                100
+Russia_3                              9                  2
+Russia_4                           2983               2113
+Russia_5                             75                  8
+Spain                               149                138
+Thailand                            696                861
+UAE                                2606               2357
+Venezuela_2                           9                  9
+
+Mean                             718.52             613.83

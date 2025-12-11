@@ -6,6 +6,7 @@ This module provides functions for creating plots and diagrams:
 - Critical difference diagrams (for statistical significance)
 """
 
+import math
 import re
 import numpy as np
 import matplotlib.pyplot as plt
@@ -65,18 +66,15 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     }
 
     # Determine grid size based on number of approaches
-    n_methods = len(methods)
-    if n_methods <= 2:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        axes = axes.flatten()
-    elif n_methods <= 4:
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        axes = axes.flatten()
-    else:
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-        axes = axes.flatten()
+    n_methods = len(methods) - 1  # exclude baseline
+    n_plots = max(1, n_methods)
 
-    fig.suptitle(f'Method Comparison - {dataset_name}', fontsize=16, fontweight='bold')
+    # Compute grid: as square as possible
+    n_cols = math.ceil(math.sqrt(n_plots))
+    n_rows = math.ceil(n_plots / n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 5 * n_rows))
+    axes = np.array(axes).flatten()  # make it iterable
 
     # Use first method as baseline
     baseline_name = list(methods.keys())[0]
@@ -88,7 +86,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
         if method_name == baseline_name:
             continue
 
-        if plot_idx >= len(axes) - 1:
+        if plot_idx >= len(axes):
             break
 
         ax = axes[plot_idx]
@@ -135,47 +133,9 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
 
         plot_idx += 1
 
-    # Hide any unused subplots (except the last one which we use for summary)
-    for i in range(plot_idx, len(axes) - 1):
+    # Hide unused axes AFTER the summary
+    for i in range(plot_idx, len(axes)):
         axes[i].axis('off')
-
-    # Use the last subplot for summary statistics
-    ax = axes[-1]
-    ax.axis('off')
-
-    # Compute scores for all methods using specified metric
-    scores = {}
-    for name, users in methods.items():
-        scores[name] = compute_score(users, io_users, x_max, metric=metric)
-
-    # Compute rankings with proper tie handling
-    rankings = compute_rankings_with_ties(scores)
-
-    # Sort by score for display
-    sorted_methods = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-    # Display summary
-    metric_display = metric.upper() if metric != 'auc' else 'AUC'
-    summary_text = "Performance Summary\n" + "="*30 + "\n\n"
-    summary_text += f"Method Rankings (by {metric_display}):\n\n"
-
-    for name, score in sorted_methods:
-        rank = rankings[name]
-        summary_text += f"{rank}. {name:20s} {score:.4f}\n"
-
-    # Get dataset info from first approach results
-    first_approach = approach_keys[0]
-    first_result = dataset_results[first_approach]
-    users_in_suspicious = set([u for group in first_result['suspicious_users'] for u in group])
-
-    summary_text += f"\n\nDataset Info:\n"
-    summary_text += f"Total users: {len(users_in_suspicious)}\n"
-    summary_text += f"IO users: {len(io_users)}\n"
-    summary_text += f"Score groups: {first_result['num_suspicious_groups']}\n"
-
-    ax.text(0.1, 0.9, summary_text, transform=ax.transAxes,
-            fontsize=10, verticalalignment='top', family='monospace',
-            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
 
     plt.tight_layout()
 
@@ -186,6 +146,14 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     plt.close()
 
     print(f"  Saved plot: {output_path}")
+
+    # Compute scores for all methods using specified metric
+    scores = {}
+    for name, users in methods.items():
+        scores[name] = compute_score(users, io_users, x_max, metric=metric)
+
+    # Compute rankings with proper tie handling
+    rankings = compute_rankings_with_ties(scores)
 
     # Return rankings for this dataset
     return rankings
