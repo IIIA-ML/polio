@@ -2,6 +2,7 @@
 
 from typing import Dict, Tuple, List, Any
 from .base import Approach
+from synchronous_repeated_detection import filter_RTs
 
 
 class LexicographicApproach(Approach):
@@ -95,10 +96,6 @@ class LexicographicApproach(Approach):
         metadata['sub_approach_modes'] = dict(zip(self.approach_keys, self.sub_modes))
         return metadata
 
-    #def needs_filtered_data(self) -> bool:
-    #    """Depends on whether first approach needs filtered data."""
-    #    return self.approaches[0].needs_filtered_data()
-
     def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
         """
         Hierarchically refine suspicious users using multiple approaches.
@@ -118,16 +115,29 @@ class LexicographicApproach(Approach):
         Returns:
             List of lists: progressively refined user groups
         """
-        # Get initial grouping from first approach
-        current_groups = self.approaches[0].get_suspicious(RTs, **kwargs)
+        # See if filtering is needed for the first approach
+        window_sec = self.approaches[0].window_sec
+        min_coactions = self.approaches[0].min_coactions
+        if self.approaches[0].needs_filtered_data():
+            RTs_to_use = filter_RTs(RTs, window_sec, min_coactions)
+        else:
+            RTs_to_use = RTs
+        
+        current_groups = self.approaches[0].get_suspicious(RTs_to_use, **kwargs)
 
         if not current_groups:
             return []
 
         # Refine with each subsequent approach
         for approach in self.approaches[1:]:
+            # See if filtering is needed
+            if approach.needs_filtered_data():
+                RTs_to_use = filter_RTs(RTs, window_sec, min_coactions)
+            else:
+                RTs_to_use = RTs
+
             # Get this approach's grouping and convert to ranks
-            approach_suspicious = approach.get_suspicious(RTs, **kwargs)
+            approach_suspicious = approach.get_suspicious(RTs_to_use, **kwargs)
 
             if not approach_suspicious:
                 # If approach returns nothing, skip refinement

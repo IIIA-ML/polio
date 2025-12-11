@@ -19,9 +19,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from synchronous_repeated_detection import import_data, filter_RTs
+from synchronous_repeated_detection import import_data
 from approaches import ApproachFactory, Approach
-from approaches.coretweets import CoRetweetsApproach
 
 
 # Default datasets to process
@@ -96,24 +95,7 @@ def process_dataset_approach(dataset: str, approach: Approach,
     # Import data
     RTs, io_users = import_data(processed_dir)
 
-    # Prepare data based on approach needs
-    if approach.needs_filtered_data():
-        # Need to filter RTs based on coretweets first (with transparent caching)
-        coretweets_approach = CoRetweetsApproach(approach.window_sec, approach.min_coactions)
-        pairs_coretweets = coretweets_approach.compute_pairs_scores(
-            RTs, processed_dir=processed_dir
-        )
-
-        if not pairs_coretweets:
-            return None
-
-        users_coretweeted = set().union(*pairs_coretweets)
-        RTs_to_use = filter_RTs(RTs, users_coretweeted)
-    else:
-        RTs_to_use = RTs
-
-    # Compute suspicious users using the approach
-    suspicious_users = approach.get_suspicious(RTs_to_use)
+    suspicious_users = approach.get_suspicious(RTs)
 
     if not suspicious_users:
         return None

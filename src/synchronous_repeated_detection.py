@@ -45,10 +45,21 @@ def count_coretweets(RTs, window_sec=60, min_coactions=1):
     approach = CoRetweetsApproach(window_sec=window_sec, min_coactions=min_coactions)
     return approach.compute_pairs_scores(RTs)
 
-def filter_RTs(RTs, users):
+def filter_RTs(RTs, window_sec, min_coactions):
     """Filter retweets to only include specified users."""
-    users_set = set(users)
-    filtered_RTs = [rt for rt in RTs if rt[0] in users_set]
+    from approaches.coretweets import CoRetweetsApproach
+
+    # Need to filter RTs based on coretweets first (with transparent caching)
+    coretweets_approach = CoRetweetsApproach(window_sec, min_coactions)
+    pairs_coretweets = coretweets_approach.compute_pairs_scores(
+        RTs
+    )
+
+    if not pairs_coretweets:
+        return None
+
+    users_coretweeted = set().union(*pairs_coretweets)
+    filtered_RTs = [rt for rt in RTs if rt[0] in users_coretweeted]
     return filtered_RTs
 
 def count_daily_coincidences(times1, times2, window_sec):

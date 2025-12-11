@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 from statistics import mean
 from statistics import median
 import math
+from synchronous_repeated_detection import filter_RTs
 
 
 class Approach(ABC):
@@ -396,7 +397,13 @@ class PairsApproach(Approach):
             List of lists: [[users_at_highest_score], [users_at_next_score], ...]
         """
         # Compute pair scores using the approach's method
-        pairs_scores = self.compute_pairs_scores(RTs, **kwargs)
+
+        if self.needs_filtered_data():
+            RTs_to_use = filter_RTs(RTs, self.window_sec, self.min_coactions)
+        else:
+            RTs_to_use = RTs
+
+        pairs_scores = self.compute_pairs_scores(RTs_to_use, **kwargs)
 
         if not pairs_scores:
             return []
