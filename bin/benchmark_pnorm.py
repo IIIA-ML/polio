@@ -26,7 +26,11 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from approaches import ApproachFactory
-from analysis import compute_score
+from analysis import (
+    load_experiment_config,
+    load_all_results,
+    compute_score,
+)
 
 
 def get_approach_name(approach_key):
@@ -66,58 +70,43 @@ def extract_norm_value(ranking_mode):
     return None
 
 
-def load_results_by_ranking_mode(results_dir, approach_key):
+def load_results_by_ranking_mode(results_dir, base_approach_key, approach_specs):
     """
     Load results for a single approach with different ranking modes.
     
-    Scans the results directory for files matching the approach key with different
-    ranking mode suffixes, and returns results grouped by ranking mode.
+    Uses the same loading mechanism as analyze_results.py, creating approach instances
+    from specs and loading results using load_all_results().
     
     Args:
         results_dir: Path to results directory
-        approach_key: Base approach key (e.g., 'coretweets_fast')
+        base_approach_key: Base approach key (e.g., 'coretweets_fast')
+        approach_specs: List of approach specs with different ranking modes
     
     Returns:
         dict: {ranking_mode: {dataset_name: {approach_key: results_dict}}}
     """
-    results_path = Path(results_dir)
+    results_by_mode = {}
     
-    if not results_path.exists():
-        print(f"ERROR: Results directory {results_dir} does not exist.")
-        return {}
-    
-    results_by_mode = defaultdict(lambda: defaultdict(dict))
-    
-    # Scan for dataset directories
-    for dataset_dir in results_path.iterdir():
-        if not dataset_dir.is_dir():
-            continue
+    for spec in approach_specs:
+        # Create approach from spec
+        approach = ApproachFactory.create(spec)
+        storage_key = approach.get_full_approach_key()
         
-        dataset_name = dataset_dir.name
+        # Extract ranking mode from the approach
+        # The ranking_mode is stored in the approach config or can be extracted from storage_key
+        if hasattr(approach, 'ranking_mode'):
+            ranking_mode = approach.ranking_mode
+        else:
+            # Default to L2 if no ranking mode is specified
+            ranking_mode = 'L2'
         
-        # Find all files matching the pattern: {approach_key}_L*.pkl or {approach_key}_Linf.pkl
-        pattern = re.compile(rf"^{re.escape(approach_key)}_(?:L(\d+)|Linf)\.pkl$")
+        # Load results for this specific approach
+        all_results = load_all_results(results_dir, [storage_key], [storage_key])
         
-        for file_path in dataset_dir.iterdir():
-            if not file_path.is_file():
-                continue
-            
-            match = pattern.match(file_path.name)
-            if match:
-                # Extract the ranking mode from the filename
-                mode_suffix = match.group(1)
-                if file_path.name.endswith('_Linf.pkl'):
-                    mode = 'Linf'
-                else:
-                    mode = f'L{mode_suffix}'
-                
-                try:
-                    with open(file_path, 'rb') as f:
-                        results_by_mode[mode][dataset_name][approach_key] = pickle.load(f)
-                except Exception as e:
-                    print(f"WARNING: Failed to load {file_path}: {e}")
+        if all_results:
+            results_by_mode[ranking_mode] = all_results
     
-    return dict(results_by_mode)
+    return results_by_mode
 
 
 def compute_metric_scores(all_results, metric='auc'):
@@ -185,16 +174,15 @@ The script will:
     
     # Load experiment configuration
     try:
-        with open(args.config, 'r') as f:
-            config = json.load(f)
+        config = load_experiment_config(args.config)
     except FileNotFoundError:
         print(f"Error: Configuration file not found: {args.config}")
         sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in configuration file: {e}")
+    except Exception as e:
+        print(f"Error: Invalid configuration: {e}")
         sys.exit(1)
     
-    # Determine experiment directory
+    # Determine experiment directory based on JSON location
     config_path = Path(args.config).resolve()
     json_dir = config_path.parent
     experiment_dir = json_dir / config['name']
@@ -216,13 +204,36 @@ The script will:
     print(f"Results directory: {results_dir}")
     print(f"Output directory: {output_dir}")
     
+    # Get approaches from config that match the base approach
+    # Filter for different ranking modes of the same base approach
+    if config.get('approaches') is None:
+        print(f"ERROR: No approaches specified in config!")
+        sys.exit(1)
+    
+    approach_specs = config['approaches']
+    
+    # Filter for specs that match the base approach key
+    matching_specs = []
+    for spec in approach_specs:
+        if isinstance(spec, str):
+            if spec == args.approach:
+                matching_specs.append(spec)
+        elif isinstance(spec, dict):
+            if spec.get('name') == args.approach:
+                matching_specs.append(spec)
+    
+    if not matching_specs:
+        print(f"ERROR: No approach specs found for '{args.approach}' in config!")
+        print(f"Available approaches: {', '.join(str(s) if isinstance(s, str) else s['name'] for s in approach_specs)}")
+        sys.exit(1)
+    
     # Load results grouped by ranking mode
     print(f"\nLoading results for different ranking modes...")
-    results_by_mode = load_results_by_ranking_mode(results_dir, args.approach)
+    results_by_mode = load_results_by_ranking_mode(results_dir, args.approach, matching_specs)
     
     if not results_by_mode:
         print(f"ERROR: No results found for approach '{args.approach}' in {results_dir}!")
-        print(f"Available results should be named as: {args.approach}_L1.pkl, {args.approach}_L2.pkl, etc.")
+        print(f"Have you run the experiment first using run_experiments.py?")
         sys.exit(1)
     
     # Sort modes by norm value
@@ -239,7 +250,28 @@ The script will:
         x_positions.append(i)  # Sequential positions regardless of actual norm value
         norm_labels.append(mode)
         
+        # Get all results for this ranking mode
         all_results = results_by_mode[mode]
+        
+        # Find the approach storage key (there should be only one per mode)
+        if not all_results:
+            print(f"  WARNING: No results found for mode {mode}")
+            continue
+        
+        # Get first dataset to find the approach key
+        first_dataset = next(iter(all_results.values()))
+        if not first_dataset:
+            print(f"  WARNING: Empty dataset results for mode {mode}")
+            continue
+        
+        approach_key = list(first_dataset.keys())[0]
+        
+        # Reconstruct all_results with approach_key as the consistent key
+        reformatted_results = {}
+        for dataset_name, dataset_data in all_results.items():
+            reformatted_results[dataset_name] = {approach_key: dataset_data[approach_key]}
+        
+        all_results = reformatted_results
         
         for metric in metrics:
             print(f"  Computing {metric.upper()} for {mode}...")

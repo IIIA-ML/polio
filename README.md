@@ -89,7 +89,7 @@ Benchmarks different Lp-norm central tendency aggregation modes for pair-based a
 
 **Usage:**
 ```bash
-uv run bin/benchmark_pnorm.py experiments/experiment_name.json approach_key
+uv run bin/benchmark_pnorm.py experiments/experiment_name.json approach_key1 approach_key2
 ```
 
 ### 4. `bin/run_experiments.py` - Experiment Execution
@@ -99,21 +99,34 @@ Batch runner that executes experiments across multiple datasets and approaches. 
 ```json
 {
   "name": "experiment_name",
-  "approaches": ["coretweets", "ignoring_tweet_fast"],
-  "datasets": ["Armenia", "Catalonia", "Spain"],
-  "parameters": {
-    "time_window_seconds": 3600
-  }
-}
-{
-  "name": "experiment_name",
-  "data_dir": "data", // Where the RTs data is located
+  "data_dir": "data",
+  "output_dir": null,
   "window_sec": 60,
-  "min_coactions": 1, // Filtering to minimum co-retweets
+  "filter_min_coactions": 1,
   "approaches": [
-    "coretweets[Linf]",     // The Linf indicates which aggregation norm you want to use (from [1,...,inf)
-    "ignoring_tweet_fast[Linf]",
-    "lexicographic:coretweets[Linf]+ignoring_tweet_fast[Linf]"
+    {
+      "name": "coretweets",
+      "min_coactions": 1,
+      "ranking_mode": "Linf"
+    },
+    {
+      "name": "ignoring_tweet_fast",
+      "min_coactions": 1,
+      "ranking_mode": "Linf",
+      "need_filtering": true
+    },
+    {
+      "name": "coretweets",
+      "min_coactions": 2,
+      "ranking_mode": "Linf"
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["coretweets", "ignoring_tweet_fast"],
+      "ranking_modes": ["Linf", "Linf"],
+      "min_coactions": [1, 1],
+      "need_filtering": [false, false]
+    }
   ],
   "datasets": [
     "Armenia",
@@ -123,21 +136,54 @@ Batch runner that executes experiments across multiple datasets and approaches. 
     "Russia_1",
     "Venezuela_1"
   ],
-  "force": false    // True if you want to overwrite all the results saved
+  "force": false
 }
 ```
+
+**Configuration Parameters:**
+- `name`: Experiment identifier
+- `data_dir`: Directory containing processed retweet data (default: "data")
+- `output_dir`: Directory for results (default: null, uses experiment name in same dir as config)
+- `window_sec`: Time window in seconds for synchronous actions (default: 60)
+- `filter_min_coactions`: The filtering of all users to only those with minimum X coretweets (default: 1)
+- `approaches`: List of approach specifications (each can be a dictionary with per-approach parameters)
+- `datasets`: List of dataset names to process (default: null = all datasets)
+- `force`: Whether to overwrite existing results (default: false)
+
+**Approach Specification Formats:**
+- **Dictionary format** (recommended):
+  ```json
+  {
+    "name": "approach_name",
+    "min_coactions": 1,
+    "ranking_mode": "Linf",
+    "need_filtering": true
+  }
+  ```
+  - `name`: Required. Approach identifier
+  - `min_coactions`: Optional. Minimum approach number threshold (default: 1)
+  - `ranking_mode`: Optional. Ranking aggregation mode: L1, L2, Linf (default: Linf)
+  - `need_filtering`: Optional. Whether to filter data by coretweets (with min_filter_coactions) before processing (default: true)
+
+- **Lexicographic format** (for combining multiple approaches):
+  ```json
+  {
+    "name": "lexicographic",
+    "approaches": ["approach1", "approach2"],
+    "ranking_modes": ["Linf", "L2"],
+    "min_coactions": [1, 2],
+    "need_filtering": [true, false]
+  }
+  ```
+  - `approaches`: Required. List of sub-approach names (at least 2)
+  - `ranking_modes`: Optional. List of ranking modes per approach (default: Linf for all)
+  - `min_coactions`: Optional. Can be single integer (applied to all) or list (one per approach)
+  - `need_filtering`: Optional. Can be single boolean (applied to all) or list (one per approach, default: true for all)
 
 **Usage:**
 ```bash
 # Run all approaches on all datasets
 uv run bin/run_experiments.py experiments/experiment_name.json
-
-# Run only specific approaches
-uv run bin/run_experiments.py experiments/experiment_name.json \
-  --approaches coretweets ignoring_tweet_fast
-
-# Force reprocessing
-uv run bin/run_experiments.py experiments/experiment_name.json --force
 ```
 
 ### 5. `bin/analyze_results.py` - Results Analysis
@@ -151,7 +197,14 @@ uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --metric
 
 # Analyze single metric
 uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --metric AUC
+
+# Generate plots without truncation (no area computation, full rank range)
+uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --notruncation
 ```
+
+**Options:**
+- `--metric`: Evaluation metric (auc, ndcg, ap, all) (default: auc)
+- `--notruncation`: Generate plots without truncating by x_max and without computing areas. Results saved to `experiments/{experiment_name}/analysis/no_truncation/`
 
 ## Typical Workflow
 

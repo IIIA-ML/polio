@@ -19,45 +19,45 @@ from typing import Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from data_loader import import_data
-from approaches import CoRetweetsApproach
+from approaches.coretweets import CoRetweetsApproach
+from approaches.ignoring_tweet_fast import IgnoringTweetFastApproach
 
 
-def count_io_users_with_min_coactions(RTs, io_users_set: set, min_coactions: int) -> Tuple[int, int]:
+def obtain_users_from_pairs(pairs: dict) -> set:
     """
-    Count IO users with minimum coactions threshold.
-    
+    Extract unique users from user pairs.
+
     Args:
-        RTs: List of (user_id, tweet_id, timestamp) tuples
-        io_users_set: Set of IO user IDs
-        min_coactions: Minimum number of co-retweets required
-    
-    Returns:
-        Tuple of (io_users_count, total_users_count)
+        pairs: Dictionary with user pairs as keys
     """
-    approach = CoRetweetsApproach(min_coactions=min_coactions)
-    pairs = approach.compute_pairs_scores(RTs)
     users = set()
     for (user1, user2) in pairs.keys():
         users.add(user1)
         users.add(user2)
-    io_count = len(io_users_set & users)
-    total_count = len(users)
-    return io_count, total_count
+    return users
 
-
-def count_io_users(dataset_name: str) -> Tuple[int, int, int, int, int, int]:
+def count_users_and_io(users, io_users):
     """
-    Count IO users in a dataset with different filtering criteria.
-    
-    Uses the CoRetweetsApproach to identify users with coretweet pairs.
+    Count how many IO users are in the given user set.
     
     Args:
-        dataset_name: Name of the dataset (e.g., 'Armenia', 'Bangladesh')
-    
-    Returns:
-        Tuple of (total_io_users, total_all_users, io_users_min1, total_users_min1,
-                  io_users_min2, total_users_min2)
+        users: Set of user IDs
+        io_users: Set of known inauthentic user IDs
     """
+    return len(users), len(io_users & users)
+
+def get_users_and_io_users_from_pairs(pairs: dict, io_users_set: set) -> Tuple[int, int]:
+    """
+    Count total users and IO users from user pairs.
+    
+    Args:
+        pairs: Dictionary with user pairs as keys
+        io_users_set: Set of known inauthentic user IDs
+    """
+    users = obtain_users_from_pairs(pairs)
+    return count_users_and_io(users, io_users_set)
+    
+def load_RTs_and_io_users(dataset_name):
     data_dir = Path(__file__).parent.parent / "data" / dataset_name / "Processed"
     
     if not data_dir.exists():
@@ -65,50 +65,50 @@ def count_io_users(dataset_name: str) -> Tuple[int, int, int, int, int, int]:
     
     # Load data
     RTs, io_users = import_data(data_dir)
-    io_users_set = set(io_users)
-    
-    # Count without filtering
-    total_io_users = len(io_users_set)
-    all_users = set()
-    for user, _, _ in RTs:
-        all_users.add(user)
-    total_all_users = len(all_users)
-    
-    # Get users with minimum 1 coretweet
-    io_users_min1, total_users_min1 = count_io_users_with_min_coactions(RTs, io_users_set, min_coactions=1)
-    
-    # Get users with minimum 2 coretweets
-    io_users_min2, total_users_min2 = count_io_users_with_min_coactions(RTs, io_users_set, min_coactions=2)
-    
-    return total_io_users, total_all_users, io_users_min1, total_users_min1, io_users_min2, total_users_min2
+    return RTs, set(io_users)
 
 
 def main():
     """Main function."""
     # List of all datasets
     datasets = [
-        'Armenia', 'Bangladesh', 'Catalonia', 'China_1', 'China_2',
-        'Cuba', 'Ecuador', 'Egypt_UAE', 'Ghana_Nigeria',
+        #'Armenia', 'Bangladesh', 'Catalonia', 'China_1', 'China_2',
+        #'Cuba', 'Ecuador',
+        'Egypt_UAE', 'Ghana_Nigeria',
         'Iran_1', 'Iran_2', 'Iran_3', 'Iran_4', 'Iran_5', 'Iran_6',
         'Qatar', 'Russia_1', 'Russia_2', 'Russia_3', 'Russia_4', 'Russia_5',
         'Spain', 'Thailand', 'UAE', 'Venezuela_1', 'Venezuela_2'
     ]
     
     # Print header
-    print(f"{'Dataset':<20} {'No Filter':<20} {'Min 1 Coretweet':<25} {'Min 2 Coretweets':<25}")
-    print("-" * 90)
+    print(f"{'Dataset':<20} {'No Filter':<20} {'Min 1 Coretweet':<25} {'Min 2 Coretweets':<25} {'Consistency Min2':<25}")
+    print("-" * 125)
     
     # Process each dataset
     for dataset in datasets:
-        result = count_io_users(dataset)
-        if result is None:
-            print(f"{dataset:<20} (data not found)")
-        else:
-            total_io, total_all, io_min1, total_min1, io_min2, total_min2 = result
-            no_filter_str = f"{total_io} ({total_all})"
-            min1_str = f"{io_min1} ({total_min1})"
-            min2_str = f"{io_min2} ({total_min2})"
-            print(f"{dataset:<20} {no_filter_str:<20} {min1_str:<25} {min2_str:<25}")
+        RTs, io_users = load_RTs_and_io_users(dataset)
+
+        users_rts = set([user for user, _, _ in RTs])
+        u_rts, io_rts = count_users_and_io(users_rts, set(io_users))
+
+        approach = CoRetweetsApproach(min_coactions=1)
+        pairs = approach.compute_pairs_scores(RTs)
+        u_coretweet, io_coretweet = get_users_and_io_users_from_pairs(pairs, io_users)
+
+        approach = CoRetweetsApproach(min_coactions=2)
+        pairs = approach.compute_pairs_scores(RTs)
+        u_coretweet_min2, io_coretweet_min2 = get_users_and_io_users_from_pairs(pairs, io_users)
+
+        approach = IgnoringTweetFastApproach(min_coactions=2)
+        pairs = approach.compute_pairs_scores(RTs)
+        u_synchdays_min2, io_synchdays_min2 = get_users_and_io_users_from_pairs(pairs, io_users)
+    
+        no_filter_str = f"{io_rts} ({u_rts})"
+        cort_min1_str = f"{io_coretweet} ({u_coretweet})"
+        cort_min2_str = f"{io_coretweet_min2} ({u_coretweet_min2})"
+        synchdays_min2_str = f"{io_synchdays_min2} ({u_synchdays_min2})"
+        
+        print(f"{dataset:<20} {no_filter_str:<20} {cort_min1_str:<25} {cort_min2_str:<25} {synchdays_min2_str:<25}")
     
     print("\nNote: Coretweets are pairs of users retweeting the same tweet within a 1-minute window.")
 

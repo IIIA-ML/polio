@@ -69,7 +69,8 @@ def load_approach_results(output_dir, dataset, approach):
 
 
 def process_dataset_approach(dataset: str, approach: Approach,
-                            data_dir: str, output_dir: str, force: bool = False):
+                            data_dir: str, output_dir: str, force: bool = False,
+                            filter_min_coactions: int | None = None):
     """
     Process a single dataset with a specific approach.
 
@@ -95,7 +96,10 @@ def process_dataset_approach(dataset: str, approach: Approach,
     # Import data
     RTs, io_users = import_data(processed_dir)
 
-    suspicious_users = approach.get_suspicious(RTs)
+    suspicious_users = approach.get_suspicious(
+        RTs,
+        filter_min_coactions=filter_min_coactions
+    )
 
     if not suspicious_users:
         return None
@@ -138,18 +142,11 @@ def load_experiment_config(config_path):
     config.setdefault('data_dir', 'data')
     config.setdefault('output_dir', None)  # Will be set based on JSON location if not specified
     config.setdefault('window_sec', 60)
-    config.setdefault('min_coactions', 1)
-    config.setdefault('ranking_mode', 'L2')  # Default to max (current behavior)
     config.setdefault('datasets', None)  # None means all datasets
     config.setdefault('approaches', None)  # None means all approaches
     config.setdefault('force', False)
-
-    # Validate ranking_mode (should be string - per-approach modes are now in approach keys)
-    ranking_mode = config['ranking_mode']
-    if not isinstance(ranking_mode, str):
-        raise ValueError(f"ranking_mode must be a string ('L1', 'L2', or 'Linf'), got {type(ranking_mode).__name__}")
-    if ranking_mode not in ('L1', 'L2', 'Linf'):
-        raise ValueError(f"Invalid ranking_mode: {ranking_mode}. Must be 'L1', 'L2', or 'Linf'")
+    # Optional override for the min_coactions used by coretweets filter step
+    config.setdefault('filter_min_coactions', None)
 
     # Convert null datasets to all datasets
     if config['datasets'] is None:
@@ -234,7 +231,6 @@ Notes:
     datasets = config['datasets']
     data_dir = config['data_dir']
     window_sec = config['window_sec']
-    min_coactions = config['min_coactions']
     force = config['force']
 
     # Set output directory based on JSON file location if not specified
@@ -249,14 +245,13 @@ Notes:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Create approach instances
-    # Ranking modes can now be specified in approach keys like "coretweets[sum]"
-    ranking_mode = config['ranking_mode']
+    # All parameters (min_coactions, ranking_mode) are now specified per-approach
     
     if config['approaches'] is not None:
-        approaches = [ApproachFactory.create(key, window_sec, min_coactions, ranking_mode)
+        approaches = [ApproachFactory.create(key, window_sec, 1, 'L2')
                      for key in config['approaches']]
     else:
-        approaches = ApproachFactory.get_all_approaches(window_sec, min_coactions, ranking_mode)
+        approaches = ApproachFactory.get_all_approaches(window_sec, 1, 'L2')
 
     # List mode
     if args.list:
@@ -283,13 +278,11 @@ Notes:
     print(f"  Data directory: {data_dir}")
     print(f"  Output directory: {output_dir}")
     print(f"  Window: {window_sec} seconds")
-    print(f"  Min co-actions: {min_coactions}")
-    print(f"  Default ranking mode: {ranking_mode}")
     print(f"  Force reprocess: {force}")
     print(f"  Datasets: {len(datasets)}")
     print(f"  Approaches: {len(approaches)}")
     for approach in approaches:
-        print(f"    {approach.get_approach_name()}: ranking_mode={approach.ranking_mode}")
+        print(f"    {approach.get_approach_name()}: ranking_mode={approach.ranking_mode}, min_coactions={approach.min_coactions}")
     print(f"  Total combinations: {len(datasets) * len(approaches)}")
 
     processed_count = 0
@@ -307,7 +300,8 @@ Notes:
 
             try:
                 result = process_dataset_approach(
-                    dataset, approach, data_dir, output_dir, force
+                    dataset, approach, data_dir, output_dir, force,
+                    filter_min_coactions=config.get('filter_min_coactions')
                 )
 
                 if result is True:

@@ -14,7 +14,7 @@ from synchronous_repeated_detection import filter_RTs
 class Approach(ABC):
     """Abstract base class for all detection approaches."""
 
-    def __init__(self, window_sec: int = 60, min_coactions: int = 1, ranking_mode: str = 'L2'):
+    def __init__(self, window_sec: int = 60, min_coactions: int = 1, ranking_mode: str = 'Linf'):
         """
         Initialize approach with common parameters.
 
@@ -34,6 +34,7 @@ class Approach(ABC):
         self.window_sec = window_sec
         self.min_coactions = min_coactions
         self.ranking_mode = ranking_mode
+        # need_filtering can be set by factory or lexicographic; if not set, defaults to needs_filtered_data()
 
     @staticmethod
     def _is_valid_ranking_mode(ranking_mode: str) -> bool:
@@ -78,22 +79,57 @@ class Approach(ABC):
 
     def get_full_approach_key(self) -> str:
         """
-        Return full key including ranking mode if not default.
+        Return full key including min_coactions/ranking mode if not default, and filtering flag.
         
-        This is used for storing results separately for different ranking modes.
+        This is used for storing results separately for different configurations.
+        Format examples:
+        - coretweets
+        - coretweets_min2
+        - consistency_min2_L2
+        - consistency_min2_Linf_nofilter (when filtering disabled)
         """
         base_key = self.get_approach_key()
-        return f"{base_key}_{self.ranking_mode}"
+        
+        # Add min_coactions to key if > 1
+        if self.min_coactions > 1:
+            base_key = f"{base_key}_min{self.min_coactions}"
+        
+        # Add ranking mode to key
+        base_key = f"{base_key}_{self.ranking_mode}"
+        
+        # Add nofilter suffix when filtering is disabled
+        if not self._get_need_filtering():
+            base_key = f"{base_key}_nofilter"
+        
+        return base_key
     
     def get_full_approach_name(self) -> str:
         """
-        Return display name including ranking mode if not default.
+        Return display name including min_coactions and ranking mode if not default.
         
-        This is used for displaying approaches with different ranking modes
+        This is used for displaying approaches with different min_coactions and ranking modes
         as separate entries in analysis and plots.
+        
+        Examples:
+        - "Vol. [Linf]" (default: min_coactions=1, ranking_mode=Linf)
+        - "Vol. min2 [Linf]" (min_coactions=2, ranking_mode=Linf)
+        - "Vol. [L2]" (min_coactions=1, ranking_mode=L2)
+        - "Vol. min2 [L2]" (min_coactions=2, ranking_mode=L2)
         """
         base_name = self.get_approach_name()
-        return f"{base_name} ({self.ranking_mode})"
+        
+        # Add min_coactions suffix if > 1
+        if self.min_coactions > 1:
+            base_name = f"{base_name} min{self.min_coactions}"
+        
+        # Always add ranking mode in brackets
+        base_name = f"{base_name} [{self.ranking_mode}]"
+        
+        # Add NoFilter suffix if filtering disabled
+        if not self._get_need_filtering():
+            base_name = f"{base_name} NoFilter"
+        
+        return base_name
 
     def needs_filtered_data(self) -> bool:
         """
@@ -101,8 +137,22 @@ class Approach(ABC):
 
         Default is True for most approaches except coretweets itself.
         """
-        return self.get_approach_key() != 'coretweets' # and self.get_approach_key() != 'ignoring_tweet_fast' and self.get_approach_key() != 'shared_tweets' and self.get_approach_key() != 'same_tweet_same_time' and self.get_approach_key() != 'ignoring_tweet_counting_rt'
-
+        return self.get_approach_key() != 'coretweets'
+    
+    def _get_need_filtering(self) -> bool:
+        """
+        Get the need_filtering flag for this approach.
+        
+        Checks the need_filtering attribute if set explicitly (by factory or lexicographic),
+        otherwise defaults to needs_filtered_data().
+        
+        Returns:
+            True if data should be filtered, False otherwise
+        """
+        if hasattr(self, 'need_filtering'):
+            return self.need_filtering
+        return self.needs_filtered_data() 
+    
     def get_metadata(self) -> Dict[str, Any]:
         """Return metadata about this approach's configuration."""
         return {
@@ -396,10 +446,14 @@ class PairsApproach(Approach):
         Returns:
             List of lists: [[users_at_highest_score], [users_at_next_score], ...]
         """
-        # Compute pair scores using the approach's method
-
-        if self.needs_filtered_data():
-            RTs_to_use = filter_RTs(RTs, self.window_sec, self.min_coactions)
+        # Filter RTs if needed before computing pair scores
+        if self._get_need_filtering():
+            # Allow overriding the min_coactions used for the coretweets filter via kwargs
+            # Default to 1 if not provided or if None is passed
+            filter_min_coactions = kwargs.get('filter_min_coactions', 1)
+            if filter_min_coactions is None:
+                filter_min_coactions = 1
+            RTs_to_use = filter_RTs(RTs, self.window_sec, filter_min_coactions)
         else:
             RTs_to_use = RTs
 

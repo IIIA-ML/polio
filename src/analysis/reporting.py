@@ -41,38 +41,42 @@ def write_metric_summary(summary_path, metric_display, dataset_names, method_nam
         f.write(f"Number of datasets: {len(dataset_names)}\n")
         f.write(f"Methods compared: {len(method_names)}\n\n")
 
+        # Calculate dynamic column width based on longest method name
+        col_width = max(len(m) for m in method_names) + 2
+        col_width = max(col_width, 12)  # minimum width of 12
+
         f.write("=" * 70 + "\n")
         f.write(f"{metric_display} SCORES MATRIX\n")
         f.write("=" * 70 + "\n\n")
         
-        # Create header
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        # Create header with full method names
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
         f.write(header + "\n")
         f.write("-" * len(header) + "\n")
         
         # Write each dataset's scores
         for dataset, scores in zip(dataset_names, scores_matrix):
-            f.write(f"{dataset:<20} " + " ".join([f"{s:>18.4f}" for s in scores]) + "\n")
+            f.write(f"{dataset:<20} " + " ".join([f"{s:>{col_width}.4f}" for s in scores]) + "\n")
         
         f.write("\n")
-        f.write(f"{'Average ' + metric_display:<20} " + " ".join([f"{s:>18.4f}" for s in avg_scores]) + "\n")
+        f.write(f"{'Average ' + metric_display:<20} " + " ".join([f"{s:>{col_width}.4f}" for s in avg_scores]) + "\n")
         f.write("\n\n")
 
         f.write("=" * 70 + "\n")
         f.write("RANKINGS MATRIX\n")
         f.write("=" * 70 + "\n\n")
         
-        # Create header
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        # Create header with full method names
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
         f.write(header + "\n")
         f.write("-" * len(header) + "\n")
         
         # Write each dataset's rankings
         for dataset, ranks in zip(dataset_names, rankings_matrix):
-            f.write(f"{dataset:<20} " + " ".join([f"{r:>18.0f}" for r in ranks]) + "\n")
+            f.write(f"{dataset:<20} " + " ".join([f"{r:>{col_width}.0f}" for r in ranks]) + "\n")
         
         f.write("\n")
-        f.write(f"{'Average Rank':<20} " + " ".join([f"{r:>18.2f}" for r in avg_ranks]) + "\n")
+        f.write(f"{'Average Rank':<20} " + " ".join([f"{r:>{col_width}.2f}" for r in avg_ranks]) + "\n")
         f.write("\n\n")
 
         f.write("=" * 70 + "\n")
@@ -100,18 +104,22 @@ def write_metric_summary(summary_path, metric_display, dataset_names, method_nam
             f.write("  Pairwise P-values:\n")
             f.write("  (p-value < 0.05 indicates significant difference)\n\n")
             
+            # Calculate dynamic column width for p-values table
+            pval_col_width = max(len(m) for m in method_names) + 2
+            pval_col_width = max(pval_col_width, 10)  # minimum width of 10
+            
             # Write header for p-values matrix
-            header = "  " + f"{'':>20} " + " ".join([f"{m[:12]:>12}" for m in method_names])
+            header = "  " + f"{'':>{pval_col_width + 8}} " + " ".join([f"{m:>{pval_col_width}}" for m in method_names])
             f.write(header + "\n")
             
             # Write each row of p-values
             for i, name_i in enumerate(method_names):
-                row = "  " + f"{name_i[:20]:<20} "
+                row = "  " + f"{name_i[:pval_col_width + 8]:<{pval_col_width + 8}} "
                 for j in range(len(method_names)):
                     if i == j:
-                        row += f"{'1.000':>12} "
+                        row += f"{'1.000':>{pval_col_width}} "
                     else:
-                        row += f"{pvalues_matrix[i, j]:>12.4f} "
+                        row += f"{pvalues_matrix[i, j]:>{pval_col_width}.4f} "
                 f.write(row + "\n")
             
             # Add significant pairs
@@ -166,17 +174,21 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         f.write("IO UNTIL FIRST NON-IO (Counts)\n")
         f.write("=" * 70 + "\n\n")
 
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        # Calculate dynamic column width
+        col_width = max(len(m) for m in method_names) + 2
+        col_width = max(col_width, 12)  # minimum width of 12
+        
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
         f.write(header + "\n")
         f.write("-" * len(header) + "\n")
         for dataset, row in zip(dataset_names, all_first_nonio_counts):
-            f.write(f"{dataset:<20} " + " ".join([f"{val:>18d}" for val in row]) + "\n")
+            f.write(f"{dataset:<20} " + " ".join([f"{val:>{col_width}d}" for val in row]) + "\n")
         
         # Compute and write mean for IO until first non-IO
         first_nonio_matrix = np.array(all_first_nonio_counts)
         avg_first_nonio = np.mean(first_nonio_matrix, axis=0)
         f.write("\n")
-        f.write(f"{'Mean':<20} " + " ".join([f"{val:>18.2f}" for val in avg_first_nonio]) + "\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{val:>{col_width}.2f}" for val in avg_first_nonio]) + "\n")
 
         f.write("\n\n")
 
@@ -184,14 +196,14 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         f.write("USERS UNTIL 80% IO FOUND\n")
         f.write("=" * 70 + "\n\n")
 
-        header = f"{'Dataset':<20} " + " ".join([f"{m[:18]:>18}" for m in method_names])
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
         f.write(header + "\n")
         f.write("-" * len(header) + "\n")
         for dataset, row in zip(dataset_names, all_users_to_80pct):
             # Values are ints or -1 when not reached
             def fmt(v):
                 return "NA" if v == -1 else str(v)
-            f.write(f"{dataset:<20} " + " ".join([f"{fmt(v):>18}" for v in row]) + "\n")
+            f.write(f"{dataset:<20} " + " ".join([f"{fmt(v):>{col_width}}" for v in row]) + "\n")
         
         # Compute and write mean for users until 80% IO found (excluding NA values)
         users_80pct_matrix = np.array(all_users_to_80pct)
@@ -207,4 +219,4 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         f.write("\n")
         def fmt_mean(v):
             return "NA" if v == -1 else f"{v:.2f}"
-        f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>18}" for val in avg_users_80pct]) + "\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>{col_width}}" for val in avg_users_80pct]) + "\n")

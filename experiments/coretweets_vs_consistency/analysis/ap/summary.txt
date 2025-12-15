@@ -1,0 +1,84 @@
+======================================================================
+EXPERIMENT RESULTS ANALYSIS SUMMARY (AP)
+======================================================================
+
+Metric: AP
+Number of datasets: 23
+Methods compared: 2
+
+======================================================================
+AP SCORES MATRIX
+======================================================================
+
+Dataset                Vol. [Linf] NoFilter           Cons. [Linf]
+------------------------------------------------------------------
+Armenia                              1.0000                 0.0549
+Catalonia                            0.5337                 0.7044
+China_1                              0.3944                 0.5535
+China_2                              0.1465                 0.8975
+Cuba                                 0.6230                 0.9797
+Ecuador                              0.6190                 0.8834
+Ghana_Nigeria                        0.7012                 0.9042
+Iran_1                               0.7775                 0.9719
+Iran_2                               0.5858                 0.9341
+Iran_3                               0.7464                 0.9870
+Iran_4                               0.5025                 0.7391
+Iran_5                               0.7139                 0.9579
+Iran_6                               0.3515                 0.9231
+Qatar                                0.3909                 0.7857
+Russia_1                             0.5213                 0.8807
+Russia_2                             0.6648                 0.7743
+Russia_3                             0.2222                 1.0000
+Russia_4                             0.0103                 0.7505
+Russia_5                             0.1183                 0.9077
+Spain                                0.8849                 0.9346
+Thailand                             0.4989                 0.5232
+UAE                                  0.9179                 0.9849
+Venezuela_2                          0.9110                 0.9110
+
+Average AP                           0.5581                 0.8236
+
+
+======================================================================
+RANKINGS MATRIX
+======================================================================
+
+Dataset                Vol. [Linf] NoFilter           Cons. [Linf]
+------------------------------------------------------------------
+Armenia                                   1                      2
+Catalonia                                 2                      1
+China_1                                   2                      1
+China_2                                   2                      1
+Cuba                                      2                      1
+Ecuador                                   2                      1
+Ghana_Nigeria                             2                      1
+Iran_1                                    2                      1
+Iran_2                                    2                      1
+Iran_3                                    2                      1
+Iran_4                                    2                      1
+Iran_5                                    2                      1
+Iran_6                                    2                      1
+Qatar                                     2                      1
+Russia_1                                  2                      1
+Russia_2                                  2                      1
+Russia_3                                  2                      1
+Russia_4                                  2                      1
+Russia_5                                  2                      1
+Spain                                     2                      1
+Thailand                                  2                      1
+UAE                                       2                      1
+Venezuela_2                               1                      1
+
+Average Rank                           1.91                   1.04
+
+
+======================================================================
+STATISTICAL TESTS
+======================================================================
+
+Wilcoxon Signed-Rank Test:
+  Test statistic: 24.0000
+  P-value: 0.000181
+  Median difference (AP): -0.2406
+  Significant: Yes
+  Winner: Cons. [Linf]

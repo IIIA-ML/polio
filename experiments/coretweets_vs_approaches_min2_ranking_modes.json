@@ -2,14 +2,42 @@
   "name": "approaches_min2_ranking_modes",
   "data_dir": "data",
   "window_sec": 60,
-  "min_coactions": 2,
+  "filter_min_coactions": 2,
   "approaches": [
-    "coretweets[Linf]",
-    "ignoring_tweet_fast[Linf]",
-    "lexicographic:coretweets[Linf]+ignoring_tweet_fast[Linf]",
-    "lexicographic:ignoring_tweet_fast[Linf]+coretweets[Linf]",
-    "lexicographic:ignoring_tweet_fast[Linf]+ignoring_tweet_counting_rt[Linf]",
-    "lexicographic:ignoring_tweet_fast[Linf]+ignoring_tweet_counting_rt[Linf]+coretweets[Linf]"
+    {
+      "name": "coretweets",
+      "ranking_mode": "Linf",
+      "min_coactions": 2
+    },
+    {
+      "name": "ignoring_tweet_fast",
+      "ranking_mode": "Linf",
+      "min_coactions": 1
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["coretweets", "ignoring_tweet_fast"],
+      "ranking_modes": "Linf",
+      "min_coactions": [2, 1]
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["ignoring_tweet_fast", "coretweets"],
+      "ranking_modes": "Linf",
+      "min_coactions": [1, 2]
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["ignoring_tweet_fast", "ignoring_tweet_counting_rt"],
+      "ranking_modes": "Linf",
+      "min_coactions": 1
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["ignoring_tweet_fast", "ignoring_tweet_counting_rt", "coretweets"],
+      "ranking_modes": "Linf",
+      "min_coactions": [1,1,2]
+    }
   ],
   "force": false
 }

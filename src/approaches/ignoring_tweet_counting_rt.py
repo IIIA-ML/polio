@@ -100,7 +100,7 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
             for j in range(i + 1, len(unique_users)):
                 pair = (unique_users[i], unique_users[j])
                 
-                if pair in pair_days:
+                if pair in pair_days and len(pair_days[pair]) >= self.min_coactions:
                     coinciding_days = pair_days[pair]
                 else:
                     coinciding_days = set()
@@ -116,7 +116,5 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
 
                     # Mean union size per coinciding day
                     result[pair] = round(1 / (union_sum / len(coinciding_days)), 1)
-                else:
-                    result[pair] = 0.0
 
         return result

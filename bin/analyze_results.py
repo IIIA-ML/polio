@@ -35,6 +35,7 @@ from analysis import (
     plot_method_comparison,
     plot_critical_difference_diagram,
 )
+from analysis.visualization import plot_method_comparison_no_truncation
 from analysis.reporting import write_metric_summary, write_general_summary
 
 
@@ -293,6 +294,12 @@ The script will:
              'Options: auc (sklearn ROC-AUC), ndcg (sklearn NDCG), '
              'ap (sklearn Average Precision), all (compute all three metrics)'
     )
+    parser.add_argument(
+        '--notruncation',
+        action='store_true',
+        help='Generate plots without truncating by x_max and without computing areas. '
+             'Outputs will be saved to experiments/{experiment_name}/analysis/no_truncation/'
+    )
 
     args = parser.parse_args()
 
@@ -314,6 +321,77 @@ The script will:
     # Set results directory
     results_dir = experiment_dir / "results"
     
+    # Handle no-truncation mode
+    if args.notruncation:
+        print("\n" + "="*70)
+        print("NO-TRUNCATION MODE")
+        print("="*70)
+        print(f"\nExperiment: {config['name']}")
+        print(f"Configuration file: {args.config}")
+        print(f"Experiment directory: {experiment_dir}")
+        print(f"Results directory: {results_dir}")
+        
+        # Create output directory for no-truncation plots
+        no_trunc_dir = experiment_dir / "analysis" / "no_truncation"
+        no_trunc_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Output directory: {no_trunc_dir}")
+        
+        # Get approaches from config
+        if config.get('approaches') is not None:
+            approach_specs = config['approaches']
+        else:
+            approach_specs = ApproachFactory.get_all_keys()
+        
+        # Create approach instances and build lookup tables
+        # Use specs directly to get correct storage keys with min_coactions, ranking_mode, and _nofilter
+        approach_storage_keys = []
+        approach_names = {}
+        for spec in approach_specs:
+            # Create approach from spec (not with hardcoded defaults)
+            # This ensures storage keys match what run_experiments.py generates
+            approach = ApproachFactory.create(spec)
+            storage_key = approach.get_full_approach_key()
+            approach_storage_keys.append(storage_key)
+            
+            # Use storage_key as the lookup key (it's always a string)
+            approach_names[storage_key] = approach.get_full_approach_name()
+        
+        print(f"Approaches: {', '.join(str(s) if isinstance(s, str) else s['name'] for s in approach_specs)}")
+        
+        # Load all results
+        print(f"\nLoading results...")
+        all_results = load_all_results(results_dir, approach_storage_keys, approach_storage_keys)
+        
+        if not all_results:
+            print(f"ERROR: No results found in {results_dir}!")
+            print("Have you run the experiment first using run_experiments.py?")
+            return
+        
+        print(f"Loaded {len(all_results)} datasets")
+        
+        # Generate plots without truncation
+        print(f"\nGenerating plots without truncation...")
+        for dataset_name, dataset_results in sorted(all_results.items()):
+            print(f"\nProcessing: {dataset_name}")
+            
+            # Check if all approaches are available
+            if not all(approach_key in dataset_results for approach_key in approach_storage_keys):
+                missing = [key for key in approach_storage_keys if key not in dataset_results]
+                print(f"  WARNING: Incomplete results, skipping (missing: {', '.join(missing)})")
+                continue
+            
+            # Generate plot without truncation
+            plot_method_comparison_no_truncation(
+                dataset_name, dataset_results, approach_storage_keys, 
+                approach_names, no_trunc_dir
+            )
+        
+        print("\n" + "="*70)
+        print("NO-TRUNCATION PLOTS COMPLETE")
+        print("="*70)
+        print(f"\nPlots saved to: {no_trunc_dir}/")
+        return
+    
     # Determine which metrics to process
     if args.metric == 'all':
         metrics_to_process = ['auc', 'ndcg', 'ap']
@@ -323,20 +401,23 @@ The script will:
     
     # Get approaches from config, or use all if not specified
     if config.get('approaches') is not None:
-        approach_keys = config['approaches']
+        approach_specs = config['approaches']
     else:
         # Get all available approaches
-        approach_keys = ApproachFactory.get_all_keys()
+        approach_specs = ApproachFactory.get_all_keys()
 
     # Create approach instances to get storage keys and display names
+    # Use specs directly to ensure storage keys match run_experiments.py output
+    # (including min_coactions, ranking_mode, and _nofilter suffix)
     approach_storage_keys = []
     approach_names = {}
 
-    for key in approach_keys:
-        approach = ApproachFactory.create(key, window_sec=60, min_coactions=1)
-        storage_key = approach.get_full_approach_key()  # Use full key to include ranking mode suffix
+    for spec in approach_specs:
+        # Create approach from spec without hardcoded defaults
+        approach = ApproachFactory.create(spec)
+        storage_key = approach.get_full_approach_key()  # Use full key to include ranking mode suffix and _nofilter
         approach_storage_keys.append(storage_key)
-        approach_names[key] = approach.get_full_approach_name()  # Use full name to include ranking mode
+        approach_names[storage_key] = approach.get_full_approach_name()  # Use full name to include ranking mode
 
     # Create general plots directory (shared across all metrics)
     general_plots_dir = experiment_dir / "analysis" / "plots"
@@ -372,12 +453,12 @@ The script will:
         print(f"Results directory: {results_dir}")
         print(f"Analysis output: {output_dir}")
         print(f"Metric: {current_metric}")
-        print(f"Approaches: {', '.join(approach_keys)}")
+        print(f"Approaches: {', '.join(str(s) if isinstance(s, str) else s['name'] for s in approach_specs)}")
 
         # Load all results (only once, reuse for all metrics)
         if current_metric == metrics_to_process[0]:
             print(f"\nLoading results...")
-            all_results = load_all_results(results_dir, approach_keys, approach_storage_keys)
+            all_results = load_all_results(results_dir, approach_storage_keys, approach_storage_keys)
 
             if not all_results:
                 print(f"ERROR: No results found in {results_dir}!")
@@ -387,7 +468,7 @@ The script will:
             print(f"Loaded {len(all_results)} datasets")
 
         # Method names (in consistent order)
-        method_names = [approach_names[key] for key in approach_keys]
+        method_names = [approach_names[key] for key in approach_storage_keys]
 
         # Store rankings and scores for each dataset
         all_rankings = []
@@ -401,7 +482,7 @@ The script will:
 
         for dataset_name, dataset_results in sorted(all_results.items()):
             rankings, scores, first_nonio, users80 = process_dataset(
-                dataset_name, dataset_results, approach_keys, approach_names,
+                dataset_name, dataset_results, approach_storage_keys, approach_names,
                 plots_dir, current_metric, should_generate_plots
             )
 
@@ -450,7 +531,7 @@ The script will:
     general_summary_path = experiment_dir / "analysis" / "summary.txt"
     write_general_summary(
         general_summary_path, config['name'], dataset_names, method_names,
-        approach_keys, all_first_nonio_counts, all_users_to_80pct
+        approach_storage_keys, all_first_nonio_counts, all_users_to_80pct
     )
 
     print(f"\nGeneral summary saved: {general_summary_path}")

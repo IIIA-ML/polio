@@ -10,66 +10,66 @@ Methods compared: 5
 NDCG SCORES MATRIX
 ======================================================================
 
-Dataset                    Cons. (Linf) Lexicographic: Vol Lexicographic: Con Lexicographic: Con Lexicographic: Con
--------------------------------------------------------------------------------------------------------------------
-Armenia                          0.3924             1.0000             1.0000             0.3857             0.4473
-Catalonia                        0.9379             0.9093             0.9401             0.9903             0.9905
-China_1                          0.8891             0.8449             0.9238             0.9141             0.9201
-China_2                          0.9723             0.6506             0.9720             0.9859             0.9864
-Cuba                             0.9973             0.9358             0.9970             0.9979             0.9979
-Ecuador                          0.9807             0.9289             0.9806             0.9882             0.9884
-Ghana_Nigeria                    0.9819             0.9612             0.9807             0.9966             0.9966
-Iran_1                           0.9975             0.9625             0.9976             0.9993             0.9993
-Iran_2                           0.9910             0.9381             0.9932             0.9930             0.9938
-Iran_3                           0.9985             0.9516             0.9980             0.9994             0.9993
-Iran_4                           0.9699             0.8980             0.9661             0.9972             0.9973
-Iran_5                           0.9897             0.9616             0.9891             1.0000             1.0000
-Iran_6                           0.9794             0.7977             0.9803             0.9857             0.9859
-Qatar                            0.9311             0.7593             0.9407             0.9435             0.9477
-Russia_1                         0.9873             0.8990             0.9860             0.9949             0.9949
-Russia_2                         0.9657             0.9263             0.9712             0.9681             0.9695
-Russia_3                         1.0000             0.3978             1.0000             1.0000             1.0000
-Russia_4                         0.8842             0.2435             0.8818             0.8868             0.8865
-Russia_5                         0.9824             0.4459             0.9877             0.9927             0.9927
-Spain                            0.9914             0.9866             0.9933             0.9961             0.9966
-Thailand                         0.8915             0.9033             0.9245             0.9443             0.9500
-UAE                              0.9989             0.9944             0.9988             0.9998             0.9998
-Venezuela_2                      0.9695             0.9685             0.9685             0.9910             0.9910
+Dataset                                                        Cons. [Linf]                Lexicographic: Vol. [Linf]+Cons. [Linf]                Lexicographic: Cons. [Linf]+Vol. [Linf]               Lexicographic: Cons. [Linf]+Prec. [Linf]   Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Armenia                                                              0.3924                                                 1.0000                                                 1.0000                                                 0.3857                                                 0.4473
+Catalonia                                                            0.9379                                                 0.9093                                                 0.9401                                                 0.9903                                                 0.9905
+China_1                                                              0.8891                                                 0.8449                                                 0.9238                                                 0.9141                                                 0.9201
+China_2                                                              0.9723                                                 0.6506                                                 0.9720                                                 0.9859                                                 0.9864
+Cuba                                                                 0.9973                                                 0.9358                                                 0.9970                                                 0.9979                                                 0.9979
+Ecuador                                                              0.9807                                                 0.9289                                                 0.9806                                                 0.9882                                                 0.9884
+Ghana_Nigeria                                                        0.9819                                                 0.9612                                                 0.9807                                                 0.9966                                                 0.9966
+Iran_1                                                               0.9975                                                 0.9625                                                 0.9976                                                 0.9993                                                 0.9993
+Iran_2                                                               0.9910                                                 0.9381                                                 0.9932                                                 0.9930                                                 0.9938
+Iran_3                                                               0.9985                                                 0.9516                                                 0.9980                                                 0.9994                                                 0.9993
+Iran_4                                                               0.9699                                                 0.8980                                                 0.9661                                                 0.9972                                                 0.9973
+Iran_5                                                               0.9897                                                 0.9616                                                 0.9891                                                 1.0000                                                 1.0000
+Iran_6                                                               0.9794                                                 0.7977                                                 0.9803                                                 0.9857                                                 0.9859
+Qatar                                                                0.9311                                                 0.7593                                                 0.9407                                                 0.9435                                                 0.9477
+Russia_1                                                             0.9873                                                 0.8990                                                 0.9860                                                 0.9949                                                 0.9949
+Russia_2                                                             0.9657                                                 0.9263                                                 0.9712                                                 0.9681                                                 0.9695
+Russia_3                                                             1.0000                                                 0.3978                                                 1.0000                                                 1.0000                                                 1.0000
+Russia_4                                                             0.8842                                                 0.2435                                                 0.8818                                                 0.8868                                                 0.8865
+Russia_5                                                             0.9824                                                 0.4459                                                 0.9877                                                 0.9927                                                 0.9927
+Spain                                                                0.9914                                                 0.9866                                                 0.9933                                                 0.9961                                                 0.9966
+Thailand                                                             0.8915                                                 0.9033                                                 0.9245                                                 0.9443                                                 0.9500
+UAE                                                                  0.9989                                                 0.9944                                                 0.9988                                                 0.9998                                                 0.9998
+Venezuela_2                                                          0.9695                                                 0.9685                                                 0.9685                                                 0.9910                                                 0.9910
 
-Average NDCG                     0.9426             0.8376             0.9727             0.9544             0.9579
+Average NDCG                                                         0.9426                                                 0.8376                                                 0.9727                                                 0.9544                                                 0.9579
 
 
 ======================================================================
 RANKINGS MATRIX
 ======================================================================
 
-Dataset                    Cons. (Linf) Lexicographic: Vol Lexicographic: Con Lexicographic: Con Lexicographic: Con
--------------------------------------------------------------------------------------------------------------------
-Armenia                               4                  1                  1                  5                  3
-Catalonia                             4                  5                  3                  2                  1
-China_1                               4                  5                  1                  3                  2
-China_2                               3                  5                  4                  2                  1
-Cuba                                  3                  5                  4                  1                  2
-Ecuador                               3                  5                  4                  2                  1
-Ghana_Nigeria                         3                  5                  4                  1                  1
-Iran_1                                4                  5                  3                  2                  1
-Iran_2                                4                  5                  2                  3                  1
-Iran_3                                3                  5                  4                  1                  2
-Iran_4                                3                  5                  4                  2                  1
-Iran_5                                3                  5                  4                  1                  1
-Iran_6                                4                  5                  3                  2                  1
-Qatar                                 4                  5                  3                  2                  1
-Russia_1                              3                  5                  4                  2                  1
-Russia_2                              4                  5                  1                  3                  2
-Russia_3                              1                  5                  1                  1                  1
-Russia_4                              3                  5                  4                  1                  2
-Russia_5                              4                  5                  3                  1                  1
-Spain                                 4                  5                  3                  2                  1
-Thailand                              5                  4                  3                  2                  1
-UAE                                   3                  5                  4                  2                  1
-Venezuela_2                           3                  4                  4                  1                  1
+Dataset                                                        Cons. [Linf]                Lexicographic: Vol. [Linf]+Cons. [Linf]                Lexicographic: Cons. [Linf]+Vol. [Linf]               Lexicographic: Cons. [Linf]+Prec. [Linf]   Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Armenia                                                                   4                                                      1                                                      1                                                      5                                                      3
+Catalonia                                                                 4                                                      5                                                      3                                                      2                                                      1
+China_1                                                                   4                                                      5                                                      1                                                      3                                                      2
+China_2                                                                   3                                                      5                                                      4                                                      2                                                      1
+Cuba                                                                      3                                                      5                                                      4                                                      1                                                      2
+Ecuador                                                                   3                                                      5                                                      4                                                      2                                                      1
+Ghana_Nigeria                                                             3                                                      5                                                      4                                                      1                                                      1
+Iran_1                                                                    4                                                      5                                                      3                                                      2                                                      1
+Iran_2                                                                    4                                                      5                                                      2                                                      3                                                      1
+Iran_3                                                                    3                                                      5                                                      4                                                      1                                                      2
+Iran_4                                                                    3                                                      5                                                      4                                                      2                                                      1
+Iran_5                                                                    3                                                      5                                                      4                                                      1                                                      1
+Iran_6                                                                    4                                                      5                                                      3                                                      2                                                      1
+Qatar                                                                     4                                                      5                                                      3                                                      2                                                      1
+Russia_1                                                                  3                                                      5                                                      4                                                      2                                                      1
+Russia_2                                                                  4                                                      5                                                      1                                                      3                                                      2
+Russia_3                                                                  1                                                      5                                                      1                                                      1                                                      1
+Russia_4                                                                  3                                                      5                                                      4                                                      1                                                      2
+Russia_5                                                                  4                                                      5                                                      3                                                      1                                                      1
+Spain                                                                     4                                                      5                                                      3                                                      2                                                      1
+Thailand                                                                  5                                                      4                                                      3                                                      2                                                      1
+UAE                                                                       3                                                      5                                                      4                                                      2                                                      1
+Venezuela_2                                                               3                                                      4                                                      4                                                      1                                                      1
 
-Average Rank                       3.43               4.74               3.09               1.91               1.30
+Average Rank                                                           3.43                                                   4.74                                                   3.09                                                   1.91                                                   1.30
 
 
 ======================================================================
@@ -87,18 +87,18 @@ Nemenyi Post-hoc Test:
   Pairwise P-values:
   (p-value < 0.05 indicates significant difference)
 
-                       Cons. (Linf) Lexicographi Lexicographi Lexicographi Lexicographi
-  Cons. (Linf)                1.000       0.0469       0.9662       0.0178       0.0001 
-  Lexicographic: Vol.[       0.0469        1.000       0.0060       0.0000       0.0000 
-  Lexicographic: Cons.       0.9662       0.0060        1.000       0.1088       0.0018 
-  Lexicographic: Cons.       0.0178       0.0000       0.1088        1.000       0.6878 
-  Lexicographic: Cons.       0.0001       0.0000       0.0018       0.6878        1.000 
+                                                                                                           Cons. [Linf]                Lexicographic: Vol. [Linf]+Cons. [Linf]                Lexicographic: Cons. [Linf]+Vol. [Linf]               Lexicographic: Cons. [Linf]+Prec. [Linf]   Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]
+  Cons. [Linf]                                                                                                    1.000                                                 0.0469                                                 0.9662                                                 0.0178                                                 0.0001 
+  Lexicographic: Vol. [Linf]+Cons. [Linf]                                                                        0.0469                                                  1.000                                                 0.0060                                                 0.0000                                                 0.0000 
+  Lexicographic: Cons. [Linf]+Vol. [Linf]                                                                        0.9662                                                 0.0060                                                  1.000                                                 0.1088                                                 0.0018 
+  Lexicographic: Cons. [Linf]+Prec. [Linf]                                                                       0.0178                                                 0.0000                                                 0.1088                                                  1.000                                                 0.6878 
+  Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]                                                           0.0001                                                 0.0000                                                 0.0018                                                 0.6878                                                  1.000 
 
   Significant differences (p < 0.05):
-    Cons. (Linf) vs Lexicographic: Vol.[Linf]+Cons.[Linf]: p = 0.0469
-    Cons. (Linf) vs Lexicographic: Cons.[Linf]+Prec.[Linf]: p = 0.0178
-    Cons. (Linf) vs Lexicographic: Cons.[Linf]+Prec.[Linf]+Vol.[Linf]: p = 0.0001
-    Lexicographic: Vol.[Linf]+Cons.[Linf] vs Lexicographic: Cons.[Linf]+Vol.[Linf]: p = 0.0060
-    Lexicographic: Vol.[Linf]+Cons.[Linf] vs Lexicographic: Cons.[Linf]+Prec.[Linf]: p = 0.0000
-    Lexicographic: Vol.[Linf]+Cons.[Linf] vs Lexicographic: Cons.[Linf]+Prec.[Linf]+Vol.[Linf]: p = 0.0000
-    Lexicographic: Cons.[Linf]+Vol.[Linf] vs Lexicographic: Cons.[Linf]+Prec.[Linf]+Vol.[Linf]: p = 0.0018
+    Cons. [Linf] vs Lexicographic: Vol. [Linf]+Cons. [Linf]: p = 0.0469
+    Cons. [Linf] vs Lexicographic: Cons. [Linf]+Prec. [Linf]: p = 0.0178
+    Cons. [Linf] vs Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]: p = 0.0001
+    Lexicographic: Vol. [Linf]+Cons. [Linf] vs Lexicographic: Cons. [Linf]+Vol. [Linf]: p = 0.0060
+    Lexicographic: Vol. [Linf]+Cons. [Linf] vs Lexicographic: Cons. [Linf]+Prec. [Linf]: p = 0.0000
+    Lexicographic: Vol. [Linf]+Cons. [Linf] vs Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]: p = 0.0000
+    Lexicographic: Cons. [Linf]+Vol. [Linf] vs Lexicographic: Cons. [Linf]+Prec. [Linf]+Vol. [Linf]: p = 0.0018

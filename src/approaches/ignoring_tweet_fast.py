@@ -75,13 +75,12 @@ class IgnoringTweetFastApproach(PairsApproach):
             # Add current user to active set
             active.append((user_curr, ts_curr))
 
-        # Build result dictionary including all pairs (even those with 0 coincidences)
-        # This matches the behavior of the standard approach
+        # Build result dictionary
         result = {}
         for i in range(len(unique_users)):
             for j in range(i + 1, len(unique_users)):
                 pair = (unique_users[i], unique_users[j])
-                if pair in pair_days:
+                if pair in pair_days and len(pair_days[pair]) >= self.min_coactions:
                     result[pair] = len(pair_days[pair])
 
         return result
