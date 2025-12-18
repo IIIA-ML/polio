@@ -196,7 +196,7 @@ Notes:
         json_dir = config_path.parent
         output_dir = str(json_dir / config['name'])
     else:
-        output_dir = config['output_dir']
+        output_dir = Path(config['output_dir']) / config['name']
 
     # Create experiment directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)

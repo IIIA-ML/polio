@@ -313,10 +313,19 @@ The script will:
         print(f"Error: Invalid configuration: {e}")
         sys.exit(1)
 
-    # Determine experiment directory based on JSON location
+    # Set defaults for optional fields
+    config.setdefault('output_dir', None)
+    
+    # Determine experiment directory based on output_dir setting or JSON location
     config_path = Path(args.config).resolve()
     json_dir = config_path.parent
-    experiment_dir = json_dir / config['name']
+    
+    if config['output_dir'] is None:
+        # Use JSON file location
+        experiment_dir = json_dir / config['name']
+    else:
+        # Use specified output_dir
+        experiment_dir = Path(config['output_dir']) / config['name']
 
     # Set results directory
     results_dir = experiment_dir / "results"
