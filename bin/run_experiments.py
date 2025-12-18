@@ -32,42 +32,6 @@ DEFAULT_DATASETS = (
 )
 
 
-def get_result_path(output_dir, dataset, approach):
-    """Get the path for storing results for a dataset+approach."""
-    # Results are stored in: {output_dir}/results/{dataset}/{approach}.pkl
-    # Use full key which includes ranking mode if not default
-    if isinstance(approach, str):
-        approach_key = approach
-    else:
-        approach_key = approach.get_full_approach_key()
-    
-    dataset_dir = Path(output_dir) / "results" / dataset
-    return dataset_dir / f"{approach_key}.pkl"
-
-
-def is_approach_processed(output_dir, dataset, approach):
-    """Check if a dataset+approach has already been processed."""
-    result_path = get_result_path(output_dir, dataset, approach)
-    return result_path.exists()
-
-
-def save_approach_results(output_dir, dataset, approach, results):
-    """Save results for a dataset+approach."""
-    result_path = get_result_path(output_dir, dataset, approach)
-    result_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(result_path, 'wb') as f:
-        pickle.dump(results, f)
-
-
-def load_approach_results(output_dir, dataset, approach):
-    """Load results for a dataset+approach."""
-    result_path = get_result_path(output_dir, dataset, approach)
-
-    with open(result_path, 'rb') as f:
-        return pickle.load(f)
-
-
 def process_dataset_approach(dataset: str, approach: Approach,
                             data_dir: str, output_dir: str, force: bool = False,
                             filter_min_coactions: int | None = None):
@@ -84,9 +48,8 @@ def process_dataset_approach(dataset: str, approach: Approach,
     Returns:
         True if processed, False if skipped, None if error/missing
     """
-    # Check if already processed
-    # Pass the approach object so it can use get_full_approach_key() which includes ranking mode
-    if not force and is_approach_processed(output_dir, dataset, approach):
+    # Check if already processed (unless force is True)
+    if not force and approach.is_result_cached(output_dir, dataset):
         return False
 
     processed_dir = f"{data_dir}/{dataset}/Processed/"
@@ -96,25 +59,19 @@ def process_dataset_approach(dataset: str, approach: Approach,
     # Import data
     RTs, io_users = import_data(processed_dir)
 
+    # Compute suspicious users (caching is handled transparently by get_suspicious)
     suspicious_users = approach.get_suspicious(
         RTs,
-        filter_min_coactions=filter_min_coactions
+        output_dir=output_dir,
+        dataset=dataset,
+        io_users=io_users,
+        filter_min_coactions=filter_min_coactions,
+        data_dir=data_dir
     )
 
     if not suspicious_users:
         return None
 
-    # Save results with metadata from approach
-    results = {
-        'dataset': dataset,
-        'suspicious_users': suspicious_users,
-        'io_users': io_users,
-        'num_suspicious_groups': len(suspicious_users),
-        'num_suspicious_users': sum(len(group) for group in suspicious_users),
-        **approach.get_metadata()  # Includes all approach configuration
-    }
-
-    save_approach_results(output_dir, dataset, approach, results)
     return True
 
 
@@ -262,7 +219,7 @@ Notes:
         for dataset in datasets:
             print(f"\n{dataset}:")
             for approach in approaches:
-                processed = is_approach_processed(output_dir, dataset, approach)
+                processed = approach.is_result_cached(output_dir, dataset)
                 status = "✓ PROCESSED" if processed else "✗ NOT PROCESSED"
                 mode_info = f" ({approach.ranking_mode})" if approach.ranking_mode != 'max' else ""
                 print(f"  {approach.get_approach_name():40s}{mode_info:10s} {status}")

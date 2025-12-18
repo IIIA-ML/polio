@@ -108,7 +108,7 @@ class LexicographicApproach(Approach):
             nf = getattr(approach, 'need_filtering', None)
             if nf is None:
                 try:
-                    nf = approach.needs_filtered_data()
+                    nf = approach._get_need_filtering()
                 except Exception:
                     nf = True
             if (nf is False) and (key != 'coretweets'):
@@ -131,23 +131,20 @@ class LexicographicApproach(Approach):
                 part = f"{key}_{mode}"
             # Append _nofilter when filtering disabled for this sub-approach (except coretweets)
             add_nofilter = False
-            if key == 'coretweets':
-                add_nofilter = False
+            # Prefer explicit flag on sub approach instance; fallback to provided list; then to _get_need_filtering
+            try:
+                sub_appr = self.approaches[idx]
+            except Exception:
+                sub_appr = None
+            if sub_appr is not None and hasattr(sub_appr, 'need_filtering'):
+                add_nofilter = (getattr(sub_appr, 'need_filtering') is False)
+            elif isinstance(getattr(self, 'sub_need_filtering', None), list) and idx < len(self.sub_need_filtering):
+                add_nofilter = (self.sub_need_filtering[idx] is False)
             else:
-                # Prefer explicit flag on sub approach instance; fallback to provided list; then to needs_filtered_data
                 try:
-                    sub_appr = self.approaches[idx]
+                    add_nofilter = (sub_appr is not None and not sub_appr._get_need_filtering())
                 except Exception:
-                    sub_appr = None
-                if sub_appr is not None and hasattr(sub_appr, 'need_filtering'):
-                    add_nofilter = (getattr(sub_appr, 'need_filtering') is False)
-                elif isinstance(getattr(self, 'sub_need_filtering', None), list) and idx < len(self.sub_need_filtering):
-                    add_nofilter = (self.sub_need_filtering[idx] is False)
-                else:
-                    try:
-                        add_nofilter = (sub_appr is not None and not sub_appr.needs_filtered_data())
-                    except Exception:
-                        add_nofilter = False
+                    add_nofilter = False
             if add_nofilter:
                 part = part + "_nofilter"
             parts.append(part)
@@ -193,14 +190,34 @@ class LexicographicApproach(Approach):
            - Split current groups based on rank differences
         3. Return final refined groups
 
+        Caching is handled transparently both for sub-approaches and for the
+        lexicographic approach itself when output_dir and dataset are provided.
+
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
-            **kwargs: Additional approach-specific parameters
+            **kwargs: Additional approach-specific parameters including:
+                - output_dir: Optional experiment output directory for caching
+                - dataset: Dataset name (needed when caching)
+                - data_dir: Optional data directory
+                - io_users: Optional inauthentic users (passed to sub-approaches)
 
         Returns:
             List of lists: progressively refined user groups
         """
-        # First approach handles its own filtering inside get_suspicious
+        # Check cache first if output_dir and dataset provided
+        output_dir = kwargs.get('output_dir')
+        dataset = kwargs.get('dataset')
+        io_users = kwargs.get('io_users')
+
+        if output_dir and dataset and self.is_result_cached(output_dir, dataset):
+            try:
+                cached_results = self.load_cached_results(output_dir, dataset)
+                return cached_results.get('suspicious_users', [])
+            except Exception:
+                # If loading fails, fall through to computation
+                pass
+
+        # First approach - caching handled transparently inside get_suspicious
         current_groups = self.approaches[0].get_suspicious(RTs, **kwargs)
 
         if not current_groups:
@@ -208,7 +225,7 @@ class LexicographicApproach(Approach):
 
         # Refine with each subsequent approach
         for approach in self.approaches[1:]:
-            # Each approach handles its own filtering inside get_suspicious
+            # Each approach handles its own caching transparently
             approach_suspicious = approach.get_suspicious(RTs, **kwargs)
 
             if not approach_suspicious:
@@ -220,6 +237,22 @@ class LexicographicApproach(Approach):
 
             # Refine current groups using these ranks
             current_groups = self._refine_groups(current_groups, ranks)
+
+        # Cache the lexicographic results for next time
+        if output_dir and dataset and current_groups:
+            try:
+                results = {
+                    'dataset': dataset,
+                    'suspicious_users': current_groups,
+                    'io_users': io_users,
+                    'num_suspicious_groups': len(current_groups),
+                    'num_suspicious_users': sum(len(group) for group in current_groups),
+                    **self.get_metadata()
+                }
+                self.save_results(output_dir, dataset, results)
+            except Exception:
+                # Don't fail if we can't save cache
+                pass
 
         return current_groups
 

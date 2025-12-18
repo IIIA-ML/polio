@@ -34,7 +34,7 @@ class Approach(ABC):
         self.window_sec = window_sec
         self.min_coactions = min_coactions
         self.ranking_mode = ranking_mode
-        # need_filtering can be set by factory or lexicographic; if not set, defaults to needs_filtered_data()
+        # need_filtering can be set by factory or lexicographic; if not set, defaults to _get_need_filtering()
 
     @staticmethod
     def _is_valid_ranking_mode(ranking_mode: str) -> bool:
@@ -151,7 +151,7 @@ class Approach(ABC):
         """
         if hasattr(self, 'need_filtering'):
             return self.need_filtering
-        return self.needs_filtered_data() 
+        return self.get_approach_key() != 'coretweets'
     
     def get_metadata(self) -> Dict[str, Any]:
         """Return metadata about this approach's configuration."""
@@ -163,6 +163,75 @@ class Approach(ABC):
             'min_coactions': self.min_coactions,
             'ranking_mode': self.ranking_mode,
         }
+    
+    # Result caching methods for use in run_experiments and lexicographic
+    
+    def _get_result_cache_path(self, output_dir: str, dataset: str) -> Path:
+        """
+        Get the cache file path for this approach's results on a dataset.
+
+        Args:
+            output_dir: Experiment output directory (results are stored in {output_dir}/results)
+            dataset: Dataset name
+
+        Returns:
+            Path to the cache file for this approach+dataset combination
+        """
+        output_dir = Path(output_dir)
+        approach_key = self.get_full_approach_key()
+        dataset_dir = output_dir / "results" / dataset
+        return dataset_dir / f"{approach_key}.pkl"
+
+    def is_result_cached(self, output_dir: str, dataset: str) -> bool:
+        """
+        Check if results for this approach on a dataset are already cached.
+
+        Args:
+            output_dir: Experiment output directory
+            dataset: Dataset name
+
+        Returns:
+            True if cache exists, False otherwise
+        """
+        cache_path = self._get_result_cache_path(output_dir, dataset)
+        return cache_path.exists()
+
+    def load_cached_results(self, output_dir: str, dataset: str) -> Dict[str, Any]:
+        """
+        Load previously computed results for this approach on a dataset.
+
+        Args:
+            output_dir: Experiment output directory
+            dataset: Dataset name
+
+        Returns:
+            Dictionary containing the cached results
+
+        Raises:
+            FileNotFoundError: If cache doesn't exist
+            pickle.UnpicklingError: If cache is corrupted
+        """
+        cache_path = self._get_result_cache_path(output_dir, dataset)
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+
+    def save_results(self, output_dir: str, dataset: str, results: Dict[str, Any]) -> None:
+        """
+        Save computed results for this approach on a dataset.
+
+        Args:
+            output_dir: Experiment output directory
+            dataset: Dataset name
+            results: Dictionary containing the results to cache
+
+        Raises:
+            IOError: If results cannot be written
+        """
+        cache_path = self._get_result_cache_path(output_dir, dataset)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(cache_path, 'wb') as f:
+            pickle.dump(results, f)
     
     @abstractmethod
     def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
@@ -263,97 +332,7 @@ class Approach(ABC):
         return user_scores
 
 class PairsApproach(Approach):
-    """Abstract base class for approaches that compute pair scores with automatic caching."""
-
-    def _get_cache_path(self, processed_dir: Path) -> Path:
-        """
-        Get the cache file path for this approach.
-
-        Args:
-            processed_dir: Path to processed dataset directory
-
-        Returns:
-            Path to the cache file
-        """
-        processed_dir = Path(processed_dir)
-        approach_key = self.get_approach_key()
-        cache_filename = f"pairs_{approach_key}_w{self.window_sec}_m{self.min_coactions}.pkl"
-        return processed_dir / cache_filename
-
-    def _is_cache_valid(self, processed_dir: Path) -> bool:
-        """
-        Check if pairs cache exists and is up-to-date.
-
-        Args:
-            processed_dir: Path to processed dataset directory
-
-        Returns:
-            True if cache exists and is newer than source data files
-        """
-        processed_dir = Path(processed_dir)
-        cache_file = self._get_cache_path(processed_dir)
-
-        if not cache_file.exists():
-            return False
-
-        # Check if cache is newer than source files
-        cache_time = cache_file.stat().st_mtime
-
-        # Source files that pairs depend on
-        source_files = [
-            processed_dir / "RTs.txt",
-            processed_dir / "data_cache.pkl"  # If data_cache exists, it's the effective source
-        ]
-
-        # Use whichever source exists (prefer data_cache.pkl if available)
-        existing_sources = [f for f in source_files if f.exists()]
-        if not existing_sources:
-            return False
-
-        # Cache is valid if it's newer than the newest source file
-        newest_source = max(f.stat().st_mtime for f in existing_sources)
-        return cache_time >= newest_source
-
-    def _load_cache(self, processed_dir: Path) -> Dict[Tuple, float]:
-        """
-        Load pairs from pickle cache file.
-
-        Args:
-            processed_dir: Path to processed dataset directory
-
-        Returns:
-            Dictionary mapping user pairs to their scores
-
-        Raises:
-            FileNotFoundError: If cache file doesn't exist
-            pickle.UnpicklingError: If cache is corrupted
-        """
-        cache_file = self._get_cache_path(processed_dir)
-
-        with open(cache_file, 'rb') as f:
-            data = pickle.load(f)
-            return data['pairs']
-
-    def _save_cache(self, processed_dir: Path, pairs: Dict[Tuple, float]) -> None:
-        """
-        Save pairs to pickle cache file.
-
-        Args:
-            processed_dir: Path to processed dataset directory
-            pairs: Dictionary mapping user pairs to their scores
-
-        Raises:
-            IOError: If cache file cannot be written
-        """
-        cache_file = self._get_cache_path(processed_dir)
-
-        with open(cache_file, 'wb') as f:
-            pickle.dump({
-                'pairs': pairs,
-                'approach_key': self.get_approach_key(),
-                'window_sec': self.window_sec,
-                'min_coactions': self.min_coactions
-            }, f, protocol=pickle.HIGHEST_PROTOCOL)
+    """Abstract base class for approaches that compute pair scores."""
 
     @abstractmethod
     def _compute_pairs_scores_impl(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
@@ -373,56 +352,16 @@ class PairsApproach(Approach):
 
     def compute_pairs_scores(self, RTs: List[Tuple], **kwargs) -> Dict[Tuple, float]:
         """
-        Compute pair scores with transparent caching support.
-
-        This method supports automatic caching for performance. When 'processed_dir'
-        is provided in kwargs, it will automatically use/create a pickle cache.
+        Compute pair scores.
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
-            **kwargs: Optional parameters:
-                - processed_dir: Directory path for caching (enables automatic caching)
-                - use_cache: If False, bypass cache (default: True)
-                - force_reload: If True, ignore existing cache and recompute (default: False)
-                - Additional approach-specific parameters
+            **kwargs: Additional approach-specific parameters
 
         Returns:
             Dictionary mapping user pairs to their scores
-
-        Example:
-            >>> # Without caching (standard usage)
-            >>> approach = CoRetweetsApproach(window_sec=60, min_coactions=1)
-            >>> pairs = approach.compute_pairs_scores(RTs)
-            >>>
-            >>> # With automatic caching (faster for repeated calls)
-            >>> pairs = approach.compute_pairs_scores(RTs, processed_dir="../data/Armenia/Processed/")
         """
-        processed_dir = kwargs.get('processed_dir')
-        use_cache = kwargs.get('use_cache', True)
-        force_reload = kwargs.get('force_reload', False)
-
-        # Try loading from cache if enabled and processed_dir provided
-        if processed_dir and use_cache and not force_reload:
-            processed_dir = Path(processed_dir)
-            if self._is_cache_valid(processed_dir):
-                try:
-                    return self._load_cache(processed_dir)
-                except Exception:
-                    # If cache loading fails, fall through to computation
-                    pass
-
-        # Compute pairs using subclass implementation
-        pairs = self._compute_pairs_scores_impl(RTs, **kwargs)
-
-        # Save cache for next time if processed_dir provided
-        if processed_dir and use_cache:
-            try:
-                self._save_cache(Path(processed_dir), pairs)
-            except Exception as e:
-                # Don't fail if we can't write cache
-                print(f"Warning: Could not write pairs cache file: {e}")
-
-        return pairs
+        return self._compute_pairs_scores_impl(RTs, **kwargs)
     
     def get_suspicious(self, RTs: List[Tuple], **kwargs) -> List[List[int]]:
         """
@@ -431,6 +370,8 @@ class PairsApproach(Approach):
         Returns a list of lists where each inner list contains users from pairs
         at the same score level, ordered from highest to lowest scores.
         Each user appears only once (in their highest-scoring group).
+
+        Supports transparent caching when output_dir and dataset are provided.
 
         The ranking mode determines how user scores are computed:
         - 'max': each user's score is the maximum score among all their pairs
@@ -441,11 +382,29 @@ class PairsApproach(Approach):
 
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
-            **kwargs: Additional approach-specific parameters
+            **kwargs: Additional approach-specific parameters including:
+                - output_dir: Experiment output directory (enables result caching)
+                - dataset: Dataset name (required for caching)
+                - io_users: Known inauthentic users (included in cached results)
+                - filter_min_coactions: Override min_coactions for filtering
+                - Other approach-specific parameters
 
         Returns:
             List of lists: [[users_at_highest_score], [users_at_next_score], ...]
         """
+        # Check cache first if output_dir and dataset provided
+        output_dir = kwargs.get('output_dir')
+        dataset = kwargs.get('dataset')
+        io_users = kwargs.get('io_users')
+
+        if output_dir and dataset and self.is_result_cached(output_dir, dataset):
+            try:
+                cached_results = self.load_cached_results(output_dir, dataset)
+                return cached_results.get('suspicious_users', [])
+            except Exception:
+                # If loading fails, fall through to computation
+                pass
+
         # Filter RTs if needed before computing pair scores
         if self._get_need_filtering():
             # Allow overriding the min_coactions used for the coretweets filter via kwargs
@@ -484,6 +443,22 @@ class PairsApproach(Approach):
 
             # Add this score block's users as a new list (sorted for consistency)
             ordered_list_of_suspicious_users.append(sorted(block_users))
+
+        # Cache results for next time if output_dir and dataset provided
+        if output_dir and dataset and ordered_list_of_suspicious_users:
+            try:
+                results = {
+                    'dataset': dataset,
+                    'suspicious_users': ordered_list_of_suspicious_users,
+                    'io_users': io_users,
+                    'num_suspicious_groups': len(ordered_list_of_suspicious_users),
+                    'num_suspicious_users': sum(len(group) for group in ordered_list_of_suspicious_users),
+                    **self.get_metadata() # Includes all approach configuration
+                }
+                self.save_results(output_dir, dataset, results)
+            except Exception:
+                # Don't fail if we can't save cache
+                pass
 
         return ordered_list_of_suspicious_users
 
