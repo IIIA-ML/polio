@@ -1,232 +1,229 @@
 # Detecting Coordination in Information Operations Campaigns
 
-This repository contains research code for detecting coordinated behavior on IO campaigns on Twitter/X through synchronous retweets analysis. Using labeled datasets from the ["Labeled Datasets for Research on Information Operations"](https://ojs.aaai.org/index.php/ICWSM/article/view/35958) article, we present a novel feature for identifying users engaged in coordinated campaigns with strong empirical results.
-
-## Key Results
-
-Our approach **outperforms the co-retweet baseline** on a critical metric: **ranking IO (inauthentic operation) users first**. By analyzing retweet patterns and temporal synchronization, we achieve superior detection of coordinated manipulation campaigns across 23 real-world datasets.
+This repository contains research code for detecting coordinated behavior in IO campaigns on Twitter/X through different approaches (e.g., weighted co-retweets). Using labeled datasets from the ["Coordinated Behavior in Information Operations on Twitter"](https://ieeexplore.ieee.org/abstract/document/10508551) article, we present improvements for the co-retweets feature for identifying users engaged in coordinated campaigns, consisting of weighting each co-retweet.
 
 ## Repository Structure
 
 ```
 polio/
-├── bin/                 # Command-line scripts for experiments and analysis
-│   ├── generate_RTs_files.py      # Convert raw Twitter data to retweet format
-│   ├── count_io_users.py          # Count IO users with different filtering criteria
-│   ├── benchmark_pnorm.py         # Benchmark different Lp-norm central tendency aggregation modes
-│   ├── run_experiments.py         # Batch runner for all experiments
-│   └── analyze_results.py         # Statistical analysis and visualization
-├── src/                 # Core libraries and utilities
-│   ├── synchronous_repeated_detection.py  # Main detection library
-│   ├── data_loader.py                     # Data loading utilities
-│   ├── approaches/                        # Detection approach implementations
-│   │   ├── base.py                        # Base approach class
-│   │   ├── coretweets.py                  # Co-retweet counting (baseline)
-│   │   ├── ignoring_tweet_counting_rt.py  # Precission approach (counting unique tweets on synchronized days)
-│   │   ├── ignoring_tweet_fast.py         # Optimized Synchronous Days (novel approach)
-│   │   ├── factory.py                     # Class to create approaches instances
-│   │   └── lexicographic.py               # Lexicographic approach, hierarchical refinement using multiple approaches
-│   └── analysis/            # Analysis utilities
-│       ├── metrics.py                 # Evaluation metrics (AUC, AP, NDCG)
-│       ├── statistics.py              # Statistical tests (Ranking users, Friedman, Wilcoxon, Nemenyi)
-│       ├── reporting.py               # Report generation (summaries and results)
-│       ├── visualization.py           # Plot generation
-│       └── io_utils.py                # IO accounts analysis utilities
-└── experiments/         # Experiment configurations and results
-    ├── {experiment_name}.json     # Experiment configuration
-    ├── {experiment_name}/
-    │   ├── results/               # Raw detection results (pickles)
-    │   └── analysis/              # Analysis outputs (metrics, plots, stats)
-    └── approaches.json            # Approach example used for Experiment 2
+├── bin/                                      # Executable scripts
+│   ├── analyze_results.py                    # Statistical analysis and visualization
+│   ├── benchmark_pnorm.py                    # Benchmark Lp-norm aggregation modes
+│   ├── bootstrap_experiments.py              # Bootstrap analysis with confidence intervals for metrics
+│   ├── compare_datasets.ipynb                # Dataset comparison notebook (Seckin vs Cima datasets)
+│   ├── convert_to_pickle.py                  # Convert RTs to pickle format for faster loading
+│   ├── count_io_users.py                     # Count IO users with filtering criteria
+│   ├── generate_RTs_files.py                 # Generate filtered datasets (calls src/extractors.py)
+│   ├── plot_multiple_results_toghether.py    # Plot multiple approaches in the same Cumulative IO Discovery Plot
+│   └── run_experiments.py                    # Batch experiment runner
+├── src/                                      # Core libraries and utilities
+│   ├── analysis/                             # Analysis utilities
+│   │   ├── __init__.py
+│   │   ├── io_utils.py                       # IO accounts analysis utilities
+│   │   ├── metrics.py                        # Evaluation metrics (AUC, AP, NDCG)
+│   │   ├── reporting.py                      # Report generation (summary.txt)
+│   │   ├── statistics.py                     # Statistical tests (Wilcoxon, Nemenyi)
+│   │   └── visualization.py                  # Plot generation
+│   ├── approaches/                           # Detection approach implementations
+│   │   ├── base.py                           # Base approach class
+│   │   ├── factory.py                        # Approach factory (register new approaches here)
+│   │   ├── lexicographic.py                  # Lexicographic approach (hierarchical)
+│   │   ├── coretweets.py                     # Co-retweet counting (baseline)
+│   │   ├── coretweets_weighted_1day.py       # 1-day weighted co-retweets
+│   │   ├── coretweets_weighted_12h.py        # 12-hour weighted co-retweets
+│   │   └── coretweets_weighted_2days.py      # 2-day weighted co-retweets
+│   ├── data_loader.py                        # Load filtered datasets for experiments
+│   ├── extractors.py                         # Extract and generate filtered data (retweets, tweets, hashtags)
+│   └── synchronous_repeated_detection.py     # Main detection library
+├── experiments/                              # Experiment configurations and results
+│   └── CimaIO_coretweetweighted_ranking_modes.json  # Example: comparing metrics
+├── pyproject.toml                            # Project dependencies
+└── README.md
 ```
 
-## Quick Start
+## Directory Overview
 
-### Prerequisites
+### `bin/` - Executable Scripts
+Contains command-line tools for the entire workflow: data generation, experiment execution, and analysis.
+
+### `src/` - Core Utilities
+- **`analysis/`**: Utilities for metrics computation, visualization, statistical tests, and reporting
+- **`approaches/`**: Detection approach implementations (baseline and weighted variants)
+- **`extractors.py`**: Called by `generate_RTs_files.py` to extract and filter datasets (retweets, tweets, hashtags, etc.)
+- **`data_loader.py`**: Loads filtered datasets when running experiments with `run_experiments.py`
+
+### `experiments/` - Experiment Configurations
+JSON files defining experiment scenarios, comparing different approaches on Cima datasets.
+
+## Prerequisites
 
 - Python 3.12+
-- [uv] package manager (or pip)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager (recommended) or pip
 
-### Installation
+## Installation
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd polio
-
-# Install dependencies
 uv sync
+source .venv/bin/activate
 ```
 
-## Scripts Guide
+## Defining New Approaches
 
-### 1. `bin/generate_RTs_files.py` - Data Preparation
+To create a custom detection approach:
 
-Converts raw Twitter/X data into standardized retweet format for analysis.
+1. **Create approach file**: Use an existing approach in `src/approaches/` as a template (e.g., [coretweets.py](src/approaches/coretweets.py))
+2. **Implement required methods**: Inherit from `BaseApproach` in [base.py](src/approaches/base.py)
+3. **Register in factory**: Add your approach to [src/approaches/factory.py](src/approaches/factory.py) so it can be called by name in experiment configurations
 
-**Input Formats:**
-- JSONL files from Twitter API v2
-- Parquet files (multiple file support)
-- Anonymized datasets
+Example registration in `factory.py`:
+```python
+from .my_new_approach import MyNewApproach
 
-**Usage:**
+APPROACHES = {
+    "coretweets": CoreTweets,
+    "my_new_approach": MyNewApproach,  # Add your approach here
+    # ...
+}
+```
+
+## Workflow
+
+### 1. Generate Filtered Datasets
+
+Extract retweets, tweets, and other features from raw data (e.g., Cima anonymized JSONL):
+
 ```bash
-uv run bin/generate_RTs_files.py
+./bin/generate_RTs_files.py
 ```
 
-### 2. `bin/count_io_users.py` - Dataset Statistics
+This script calls [src/extractors.py](src/extractors.py) to generate filtered datasets in the appropriate format.
 
-Analyzes IO user distribution in each dataset with different filtering thresholds.
+### 2. Define Approaches
 
-**Usage:**
+Create detection approaches in [src/approaches/](src/approaches/). Remember to register new approaches in [factory.py](src/approaches/factory.py).
+
+### 3. Define Experiment Configuration
+
+Create an experiment JSON file in `experiments/`. This defines:
+- Which approaches to compare
+- Which datasets to use
+- Time window parameters
+- Ranking modes (metrics)
+- If the approach needs a first filtering of a users cohort (users that presents minimum number of co-retweets)
+
+**Important**: Different ranking modes (L1, L2,..., Linf) aggregate scores differently. To determine the optimal metric for your use case, first run an experiment comparing different ranking modes. For example:
+
 ```bash
-uv run bin/count_io_users.py
+./bin/run_experiments.py experiments/CimaIO_coretweetweighted_ranking_modes.json
+./bin/benchmark_pnorm.py experiments/CimaIO_coretweetweighted_ranking_modes.json <approach_name>
 ```
 
-### 3. `bin/benchmark_pnorm.py` - Benchmarking Aggregation Norms
+This benchmarks metrics (AUC, AP, NDCG) across all datasets to help you choose the best aggregation mode.
 
-Benchmarks different Lp-norm central tendency aggregation modes for pair-based approaches accross all datasets, evaluating on different metrics (AUC, AP and NDCG). It needs to have already run an experiment (bin/`run_experiments.py`).
-
-**Usage:**
-```bash
-uv run bin/benchmark_pnorm.py experiments/experiment_name.json approach_key1 approach_key2
-```
-
-### 4. `bin/run_experiments.py` - Experiment Execution
-
-Batch runner that executes experiments across multiple datasets and approaches. First you need to define an experiment .json in `experiments/` such as follows:
-
+**Example experiment configuration**:
 ```json
 {
-  "name": "experiment_name",
-  "data_dir": "data",
-  "output_dir": null,
+  "name": "my_experiment",
+  "data_dir": "datasets/CimaIO/RTs/",
   "window_sec": 60,
-  "filter_min_coactions": 1,
   "approaches": [
-    {
-      "name": "coretweets",
-      "min_coactions": 1,
-      "ranking_mode": "Linf"
-    },
-    {
-      "name": "ignoring_tweet_fast",
-      "min_coactions": 1,
-      "ranking_mode": "Linf",
-      "need_filtering": true
-    },
     {
       "name": "coretweets",
       "min_coactions": 2,
       "ranking_mode": "Linf"
     },
     {
-      "name": "lexicographic",
-      "approaches": ["coretweets", "ignoring_tweet_fast"],
-      "ranking_modes": ["Linf", "Linf"],
-      "min_coactions": [1, 1],
-      "need_filtering": [false, false]
+      "name": "coretweets_weighted_1day",
+      "ranking_mode": "L2",
+      "need_filtering": false
     }
   ],
-  "datasets": [
-    "Armenia",
-    "Catalonia",
-    "Spain",
-    "Iran_1",
-    "Russia_1",
-    "Venezuela_1"
-  ],
+  "datasets": ["Honduras"],
   "force": false
 }
 ```
 
-**Configuration Parameters:**
-- `name`: Experiment identifier
-- `data_dir`: Directory containing processed retweet data (default: "data")
-- `output_dir`: Directory for results (default: null, uses experiment name in same dir as config)
-- `window_sec`: Time window in seconds for synchronous actions (default: 60)
-- `filter_min_coactions`: The filtering of all users to only those with minimum X coretweets (default: 1)
-- `approaches`: List of approach specifications (each can be a dictionary with per-approach parameters)
-- `datasets`: List of dataset names to process (default: null = all datasets)
-- `force`: Whether to overwrite existing results (default: false)
+### 4. Run Experiment
 
-**Approach Specification Formats:**
-- **Dictionary format** (recommended):
-  ```json
-  {
-    "name": "approach_name",
-    "min_coactions": 1,
-    "ranking_mode": "Linf",
-    "need_filtering": true
-  }
-  ```
-  - `name`: Required. Approach identifier
-  - `min_coactions`: Optional. Minimum approach number threshold (default: 1)
-  - `ranking_mode`: Optional. Ranking aggregation mode: L1, L2, Linf (default: Linf)
-  - `need_filtering`: Optional. Whether to filter data by coretweets (with min_filter_coactions) before processing (default: true)
-
-- **Lexicographic format** (for combining multiple approaches):
-  ```json
-  {
-    "name": "lexicographic",
-    "approaches": ["approach1", "approach2"],
-    "ranking_modes": ["Linf", "L2"],
-    "min_coactions": [1, 2],
-    "need_filtering": [true, false]
-  }
-  ```
-  - `approaches`: Required. List of sub-approach names (at least 2)
-  - `ranking_modes`: Optional. List of ranking modes per approach (default: Linf for all)
-  - `min_coactions`: Optional. Can be single integer (applied to all) or list (one per approach)
-  - `need_filtering`: Optional. Can be single boolean (applied to all) or list (one per approach, default: true for all)
-
-**Usage:**
-```bash
-# Run all approaches on all datasets
-uv run bin/run_experiments.py experiments/experiment_name.json
-```
-
-### 5. `bin/analyze_results.py` - Results Analysis
-
-Performs statistical analysis and generates comparison visualizations on the desired evaluation metric (AUC, AP or NDCG). If the experiment only have 2 approaches, Wilcoxon Signed-Rank test is performed, if more, Nemenyi test with Critical Diagram plot is generated.
-
-**Usage:**
-```bash
-# Analyze experiment and generate all outputs
-uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --metric all
-
-# Analyze single metric
-uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --metric AUC
-
-# Generate plots without truncation (no area computation, full rank range)
-uv run bin/analyze_results.py experiments/coretweets_vs_approaches.json --notruncation
-```
-
-**Options:**
-- `--metric`: Evaluation metric (auc, ndcg, ap, all) (default: auc)
-- `--notruncation`: Generate plots without truncating by x_max and without computing areas. Results saved to `experiments/{experiment_name}/analysis/no_truncation/`
-
-## Typical Workflow
+Execute the experiment across all specified datasets and approaches:
 
 ```bash
-# Generate retweet files from parquet files downloaded from Labeled Datasets on IO article
-uv run bin/generate_RTs_files.py
-
-# Execute all approaches on all datasets
-uv run bin/run_experiments.py experiments/my_experiment.json
-
-# Generate metrics, plots, and statistical tests
-uv run bin/analyze_results.py experiments/my_experiment.json --metric all
+./bin/run_experiments.py experiments/my_experiment.json
 ```
 
-## Performance Optimization
+Results are saved to `experiments/my_experiment/results/`.
 
-The codebase includes several performance optimizations:
+### 5. Analyze Results
 
-1. **Pickle Caching**: Convert text-based datasets to binary pickle format
-   - 10-100x faster loading for repeated experiments
-   - Automatic with `convert_to_pickle.py` or when running `run_experiments.py`
+#### Option A: Comprehensive Analysis
 
-2. **Result Caching**: `run_experiments.py` caches computed results
-   - Avoids reprocessing unchanged (dataset, approach) pairs
-   - Force reprocessing with `--force` flag
+Generate metrics, statistical tests, and visualizations:
+
+```bash
+# Analyze all metrics
+./bin/analyze_results.py experiments/my_experiment.json --metric all
+
+# Analyze specific metric
+./bin/analyze_results.py experiments/my_experiment.json --metric AUC
+
+# Skip plot generation
+./bin/analyze_results.py experiments/my_experiment.json --no-plots
+
+# Generate plots without truncation (used when one approach is not based
+# on co-retweets and end up with bigger suspicious users cohort)
+./bin/analyze_results.py experiments/my_experiment.json --notruncation
+
+# Compare approach results with ideal (catching all IO users first)
+./bin/analyze_results.py experiments/my_experiment.json --ideal
+```
+
+**Statistical Tests** (need a lot of datasets):
+- 2 approaches: Wilcoxon Signed-Rank test
+- 3+ approaches: Nemenyi test with Critical Diagram
+
+#### Option B: Custom Visualization
+
+Plot multiple experiment results together:
+
+```bash
+./bin/plot_multiple_results_toghether.py experiments/my_experiment.json
+```
+
+### 6. Bootstrap Analysis (Optional)
+
+For limited datasets, perform bootstrap resampling to compute confidence intervals (95% quantile) for metrics (AUC, AP, NDCG):
+
+```bash
+./bin/bootstrap_experiments.py experiments/my_experiment.json
+```
+
+This replaces users in the retweet data and computes confidence intervals across bootstrap samples.
+
+## Complete Example Workflow
+
+```bash
+# 1. Generate datasets from Cima anonymized data
+./bin/generate_RTs_files.py
+
+# 2. Compare ranking modes to find optimal metric
+./bin/run_experiments.py experiments/Ranking_modes_experiment.json
+./bin/benchmark_pnorm.py experiments/Ranking_modes_experiment.json coretweets_weighted_1day
+
+# 3. Define and run main experiment
+./bin/run_experiments.py experiments/my_experiment.json
+
+# 4. Analyze results
+./bin/analyze_results.py experiments/my_experiment.json --metric all
+
+# 5. (Optional) Bootstrap for confidence intervals
+./bin/bootstrap_experiments.py experiments/my_experiment.json
+```
+
+## Additional Tools
+
+- [count_io_users.py](bin/count_io_users.py): Analyze IO user distribution with different filtering thresholds
+- [compare_datasets.ipynb](bin/compare_datasets.ipynb): Interactive dataset comparison notebook (Cima vs Seckin)
+- [convert_to_pickle.py](bin/convert_to_pickle.py): Convert filtered datasets to pickle format for faster loading (done automatically when running an experiment)
+```
