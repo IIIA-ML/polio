@@ -6,7 +6,7 @@ the time window.
 """
 
 from typing import Dict, Tuple, List
-from collections import defaultdict, deque
+from collections import defaultdict
 from .base import PairsApproach
 
 
@@ -52,18 +52,16 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
         if not RTs:
             return {}
 
-        # Get all unique users
-        unique_users = sorted(set(user for user, _, _ in RTs))
-
         # Sort all events chronologically: O(R log R)
         events = [(ts, user) for user, _, ts in RTs]
         events.sort()
 
         # Active set: users whose last action is within the window
-        active = deque()  # Contains (user, timestamp) tuples
+        # Use dict for O(1) lookup/removal by user
+        active = {}  # Maps user_id -> timestamp
 
-        # Track unique (pair, day) combinations
-        pair_days = {}
+        # Track unique (pair, day) combinations efficiently
+        pair_days = defaultdict(set)
 
         # Track unique tweets per user per day: user -> day -> set(tweet_ids)
         user_day_tweets = defaultdict(lambda: defaultdict(set))
@@ -72,49 +70,44 @@ class IgnoringTweetCountingRTApproach(PairsApproach):
             day = ts.date()
             user_day_tweets[user][day].add(tweet_id)
 
+        # Cache timedelta for window to avoid repeated conversion
+        from datetime import timedelta
+        window_td = timedelta(seconds=self.window_sec)
+
         # Process events chronologically
         for ts_curr, user_curr in events:
             # Remove users whose last action is outside the window
-            while active and (ts_curr - active[0][1]).total_seconds() > self.window_sec:
-                active.popleft()
+            expired = [u for u, ts in active.items() if (ts_curr - ts) > window_td]
+            for u in expired:
+                del active[u]
 
             # Record day for all pairs with currently active users
             current_day = ts_curr.date()
-            for user_active, ts_active in active:
+            for user_active, ts_active in active.items():
                 # Skip same user (can happen if user posts multiple times)
                 if user_active != user_curr:
                     # Create canonical pair (sorted tuple)
                     pair = tuple(sorted((user_curr, user_active)))
-                    # Add this day to the set of days for this pair
-                    if pair not in pair_days:
-                        pair_days[pair] = set()
+                    # Add this day to the set of days for this pair (unique days only)
                     pair_days[pair].add(current_day)
 
-            # Add current user to active set
-            active.append((user_curr, ts_curr))
+            # Add/update current user in active set
+            active[user_curr] = ts_curr
 
         # Build result dictionary with mean total unique tweets (union) per coinciding day.
         # Pairs with no coinciding days get a score of 0.0
         result = {}
-        for i in range(len(unique_users)):
-            for j in range(i + 1, len(unique_users)):
-                pair = (unique_users[i], unique_users[j])
-                
-                if pair in pair_days and len(pair_days[pair]) >= self.min_coactions:
-                    coinciding_days = pair_days[pair]
-                else:
-                    coinciding_days = set()
-                
-                if coinciding_days:
-                    union_sum = 0
-                    u_i = unique_users[i]
-                    u_j = unique_users[j]
-                    for day in coinciding_days:
-                        tweets_i = user_day_tweets[u_i][day]
-                        tweets_j = user_day_tweets[u_j][day]
-                        union_sum += len(tweets_i.union(tweets_j))
+        for pair, days in pair_days.items():
+            if len(days) < self.min_coactions:
+                continue
+            u_i, u_j = pair
+            union_sum = 0
+            for day in days:
+                tweets_i = user_day_tweets[u_i][day]
+                tweets_j = user_day_tweets[u_j][day]
+                union_sum += len(tweets_i.union(tweets_j))
 
-                    # Mean union size per coinciding day
-                    result[pair] = round(1 / (union_sum / len(coinciding_days)), 1)
+            # Preserve original scoring semantics (reciprocal of mean union size)
+            result[pair] = round(1 / (union_sum / len(days)), 1)
 
         return result

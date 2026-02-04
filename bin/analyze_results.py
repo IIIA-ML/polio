@@ -10,6 +10,11 @@ This script:
 5. Performs Friedman test
 6. Conducts post-hoc analysis (Nemenyi test)
 7. Generates critical difference diagrams
+
+Supports multiple evaluation modes: standard, multi-metric, no-truncation, and ideal.
+
+Usage:
+    ./bin/analyze_results.py <config.json> [--no-plots] [--metric <metric/all>] [--notruncation] [--ideal]
 """
 
 import sys
@@ -34,13 +39,15 @@ from analysis import (
     nemenyi_test,
     plot_method_comparison,
     plot_critical_difference_diagram,
+    count_total_io_in_suspicious,
+    count_total_accounts_in_suspicious,
 )
-from analysis.visualization import plot_method_comparison_no_truncation
+from analysis.visualization import plot_method_comparison_no_truncation, plot_method_comparison_ideal
 from analysis.reporting import write_metric_summary, write_general_summary
 
 
 def process_dataset(dataset_name, dataset_results, approach_keys, approach_names,
-                    plots_dir, current_metric, generate_plots):
+                    plots_dir, current_metric, generate_plots, ideal_mode=False):
     """
     Process a single dataset: compute scores, rankings, and optionally generate plots.
 
@@ -52,9 +59,10 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
         plots_dir: Directory to save plots
         current_metric: Metric to use for scoring
         generate_plots: Whether to generate comparison plots
+        ideal_mode: Whether to generate ideal comparison plots
 
     Returns:
-        Tuple of (rankings, scores, first_nonio_counts, users_to_80pct) or (None, None, None, None)
+        Tuple of (rankings, scores, first_nonio_counts, users_to_80pct, total_io_counts, total_accounts_counts) or (None, None, None, None, None, None)
     """
     print(f"\nProcessing: {dataset_name}")
 
@@ -62,7 +70,7 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
     if not all(approach_key in dataset_results for approach_key in approach_keys):
         missing = [key for key in approach_keys if key not in dataset_results]
         print(f"  WARNING: Incomplete results, skipping (missing: {', '.join(missing)})")
-        return None, None, None, None
+        return None, None, None, None, None, None
 
     # Get method names
     method_names = [approach_names[key] for key in approach_keys]
@@ -94,28 +102,48 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
 
     users_to_80pct = {
         approach_names[approach_key]: users_until_reaching_io_fraction(
-            dataset_results[approach_key]['suspicious_users'], io_users, fraction=0.8
+            dataset_results[approach_key]['suspicious_users'], io_users, fraction=0.9
+        )
+        for approach_key in approach_keys
+    }
+
+    total_io_counts = {
+        approach_names[approach_key]: count_total_io_in_suspicious(
+            dataset_results[approach_key]['suspicious_users'], io_users
+        )
+        for approach_key in approach_keys
+    }
+
+    total_accounts_counts = {
+        approach_names[approach_key]: count_total_accounts_in_suspicious(
+            dataset_results[approach_key]['suspicious_users']
         )
         for approach_key in approach_keys
     }
 
     # Generate plot or just compute rankings
     if generate_plots:
-        rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, 
-                                         approach_names, plots_dir, metric=current_metric)
+        if ideal_mode:
+            rankings = plot_method_comparison_ideal(dataset_name, dataset_results, approach_keys, 
+                                                   approach_names, plots_dir, metric=current_metric)
+        else:
+            rankings = plot_method_comparison(dataset_name, dataset_results, approach_keys, 
+                                             approach_names, plots_dir, metric=current_metric)
     else:
         # Just compute rankings without plotting
         rankings = compute_rankings_with_ties(scores)
 
     if rankings is None:
-        return None, None, None, None
+        return None, None, None, None, None, None
 
     # Return data in consistent order
     return (
         [rankings[method] for method in method_names],
         [scores[method] for method in method_names],
         [first_nonio_counts[method] for method in method_names],
-        [(users_to_80pct[method] if users_to_80pct[method] is not None else -1) for method in method_names]
+        [(users_to_80pct[method] if users_to_80pct[method] is not None else -1) for method in method_names],
+        [total_io_counts[method] for method in method_names],
+        [total_accounts_counts[method] for method in method_names]
     )
 
 
@@ -266,14 +294,11 @@ def main():
         description="Analyze experiment results and perform statistical comparisons",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Example usage:
-  uv run bin/analyze_results.py experiments/my_experiment.json
-  uv run bin/analyze_results.py experiments/my_experiment.json --no-plots
+            Usage:
+                ./bin/analyze_results.py <config.json> [--no-plots] [--metric <metric/all>] [--notruncation] [--ideal]
 
-The script will:
-1. Load the experiment configuration from the JSON file
-2. Load results from {json_dir}/{experiment_name}/results/
-3. Save analysis to {json_dir}/{experiment_name}/analysis/
+            Output saved to {experiment_name}/analysis/ with metric-specific and general summaries.
+            Statistical tests: Wilcoxon (2 methods) or Friedman+Nemenyi (>2 methods).
         """
     )
     parser.add_argument(
@@ -299,6 +324,12 @@ The script will:
         action='store_true',
         help='Generate plots without truncating by x_max and without computing areas. '
              'Outputs will be saved to experiments/{experiment_name}/analysis/no_truncation/'
+    )
+    parser.add_argument(
+        '--ideal',
+        action='store_true',
+        help='Generate ideal comparison plots where each method is compared to the ideal detection curve '
+             '(y=x until all IO users found, then flat). Outputs saved as *_comparison_ideal.png'
     )
 
     args = parser.parse_args()
@@ -485,14 +516,16 @@ The script will:
         dataset_names = []
         all_first_nonio_counts = []
         all_users_to_80pct = []
+        all_total_io_counts = []
+        all_total_accounts_counts = []
 
         # Use general plots directory only on first metric if processing all metrics
         plots_dir = general_plots_dir if should_generate_plots else None
 
         for dataset_name, dataset_results in sorted(all_results.items()):
-            rankings, scores, first_nonio, users80 = process_dataset(
+            rankings, scores, first_nonio, users80, total_io, total_accounts = process_dataset(
                 dataset_name, dataset_results, approach_storage_keys, approach_names,
-                plots_dir, current_metric, should_generate_plots
+                plots_dir, current_metric, should_generate_plots, ideal_mode=args.ideal
             )
 
             if rankings is None:
@@ -502,6 +535,8 @@ The script will:
             all_scores.append(scores)
             all_first_nonio_counts.append(first_nonio)
             all_users_to_80pct.append(users80)
+            all_total_io_counts.append(total_io)
+            all_total_accounts_counts.append(total_accounts)
             dataset_names.append(dataset_name)
 
         if len(all_rankings) == 0:
@@ -540,7 +575,8 @@ The script will:
     general_summary_path = experiment_dir / "analysis" / "summary.txt"
     write_general_summary(
         general_summary_path, config['name'], dataset_names, method_names,
-        approach_storage_keys, all_first_nonio_counts, all_users_to_80pct
+        approach_storage_keys, all_first_nonio_counts, all_users_to_80pct,
+        all_total_io_counts, all_total_accounts_counts
     )
 
     print(f"\nGeneral summary saved: {general_summary_path}")

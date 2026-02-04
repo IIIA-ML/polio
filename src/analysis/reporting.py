@@ -138,7 +138,8 @@ def write_metric_summary(summary_path, metric_display, dataset_names, method_nam
 
 
 def write_general_summary(summary_path, experiment_name, dataset_names, method_names,
-                         approach_keys, all_first_nonio_counts, all_users_to_80pct):
+                         approach_keys, all_first_nonio_counts, all_users_to_80pct,
+                         all_total_io_counts, all_total_accounts_counts):
     """
     Write general summary report with metric-independent information.
 
@@ -150,6 +151,8 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         approach_keys: List of approach keys
         all_first_nonio_counts: 2D array of IO counts until first non-IO
         all_users_to_80pct: 2D array of users needed to reach 80% IO
+        all_total_io_counts: 2D array of total IO accounts found
+        all_total_accounts_counts: 2D array of total accounts (IO+non-IO) found
     """
     with open(summary_path, 'w') as f:
         f.write("="*70 + "\n")
@@ -220,3 +223,39 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         def fmt_mean(v):
             return "NA" if v == -1 else f"{v:.2f}"
         f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>{col_width}}" for val in avg_users_80pct]) + "\n")
+
+        f.write("\n\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("TOTAL IO ACCOUNTS FOUND\n")
+        f.write("=" * 70 + "\n\n")
+
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        for dataset, row in zip(dataset_names, all_total_io_counts):
+            f.write(f"{dataset:<20} " + " ".join([f"{val:>{col_width}d}" for val in row]) + "\n")
+        
+        # Compute and write mean for total IO accounts
+        total_io_matrix = np.array(all_total_io_counts)
+        avg_total_io = np.mean(total_io_matrix, axis=0)
+        f.write("\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{val:>{col_width}.2f}" for val in avg_total_io]) + "\n")
+
+        f.write("\n\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("TOTAL ACCOUNTS FOUND (IO + Non-IO)\n")
+        f.write("=" * 70 + "\n\n")
+
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        for dataset, row in zip(dataset_names, all_total_accounts_counts):
+            f.write(f"{dataset:<20} " + " ".join([f"{val:>{col_width}d}" for val in row]) + "\n")
+        
+        # Compute and write mean for total accounts
+        total_accounts_matrix = np.array(all_total_accounts_counts)
+        avg_total_accounts = np.mean(total_accounts_matrix, axis=0)
+        f.write("\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{val:>{col_width}.2f}" for val in avg_total_accounts]) + "\n")

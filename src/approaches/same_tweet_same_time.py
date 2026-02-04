@@ -15,7 +15,7 @@ class SameTweetSameTimeApproach(PairsApproach):
     """
 
     def get_approach_name(self) -> str:
-        return "Same Tweet Same Time"
+        return "CoRt_Days"
 
     def get_approach_key(self) -> str:
         return "same_tweet_same_time"
@@ -23,9 +23,21 @@ class SameTweetSameTimeApproach(PairsApproach):
     @staticmethod
     def _group_RTs_by_tweet(RTs):
         """Group retweets by tweet, sorted by timestamp."""
+        tweet_user = defaultdict(set)
         tweet_data = defaultdict(list)
+        tweet_error = set()
         for user, tid, ts in RTs:
-            tweet_data[tid].append((user, ts))
+            # Make sure to not include repeated retweets (errors in data)
+            if user not in tweet_user[tid]:
+                tweet_user[tid].add(user)
+                tweet_data[tid].append((user, ts))
+            else:
+                tweet_error.add(tid)
+
+        for tid in list(tweet_data):
+            if tid in tweet_error:
+                tweet_data.pop(tid)
+
         # Sort each tweet's retweets chronologically
         for tid in tweet_data:
             tweet_data[tid].sort(key=lambda x: x[1])
@@ -53,11 +65,13 @@ class SameTweetSameTimeApproach(PairsApproach):
                     u1, t1 = events[i]
                     u2, t2 = events[j]
                     # Check if retweets are within time window
-                    if abs((t1 - t2).total_seconds()) <= self.window_sec and u1 != u2:
+                    if abs((t1 - t2).total_seconds()) > self.window_sec:
+                        break
+                    if u1 != u2:
                         pair = tuple(sorted((u1, u2)))
-                        result[pair].add(max(t1, t2).date())
-                    else:
-                        break  # Events are sorted, no need to check further
+                        result[pair].add(t1.date())
 
         # Convert sets of days to counts
-        return {pair: len(days) for pair, days in result.items()}
+        result =  {pair: len(days) for pair, days in result.items() if len(days) >= self.min_coactions}
+        #result = dict(sorted(result.items(), key=lambda x: x[1], reverse=True)[:2000])
+        return result

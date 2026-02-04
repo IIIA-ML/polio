@@ -1,36 +1,27 @@
 """Factory for creating approach instances."""
 
-from typing import List, Type, Dict, Optional
-
-from .shared_tweets_fast import SharedTweetsFastApproach
-from .shared_tweets_counting_rt import SharedTweetCountingRTApproach
-from .ignoring_tweet_counting_rt import IgnoringTweetCountingRTApproach
+from typing import List, Type, Dict
 from .base import Approach
 from .coretweets import CoRetweetsApproach
-from .coretweets_numpy import CoRetweetsNumpyApproach
-from .coretweets_fast import CoRetweetsFastApproach
-from .ignoring_tweet import IgnoringTweetApproach
-from .ignoring_tweet_fast import IgnoringTweetFastApproach
-from .shared_tweets import SharedTweetsApproach
-from .same_tweet_same_time import SameTweetSameTimeApproach
 from .lexicographic import LexicographicApproach
+from .coretweets_weighted_1day import CoretweetsWeighted1DayApproach
+from .coretweets_weighted_2days import CoretweetsWeighted2DaysApproach
+from .coretweets_weighted_12h import CoretweetsWeighted12hApproach
 
 
 class ApproachFactory:
-    """Factory for creating and managing approach instances."""
+    """Factory for creating and managing approach instances.
+    
+    To add new approaches, create an approach class inheriting from Approach
+    and add it to the _approaches dictionary below with a descriptive key.
+    """
 
     _approaches: Dict[str, Type[Approach]] = {
         'coretweets': CoRetweetsApproach,
-        'coretweets_numpy': CoRetweetsNumpyApproach,
-        'coretweets_fast': CoRetweetsFastApproach,
-        'ignoring_tweet': IgnoringTweetApproach,
-        'ignoring_tweet_fast': IgnoringTweetFastApproach,
-        'shared_tweets': SharedTweetsApproach,
-        'same_tweet_same_time': SameTweetSameTimeApproach,
         'lexicographic': LexicographicApproach,
-        'ignoring_tweet_counting_rt': IgnoringTweetCountingRTApproach,
-        'shared_tweet_counting_rt': SharedTweetCountingRTApproach,
-        'shared_tweets_fast': SharedTweetsFastApproach
+        'coretweets_weighted_1day': CoretweetsWeighted1DayApproach,
+        'coretweets_weighted_2days': CoretweetsWeighted2DaysApproach,
+        'coretweets_weighted_12h': CoretweetsWeighted12hApproach,
     }
 
     @staticmethod

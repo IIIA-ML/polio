@@ -38,7 +38,7 @@ class SharedTweetsFastApproach(PairsApproach):
             user_tweets[user].add(tid)
 
         # 2️⃣ Track days per pair
-        pair_days = defaultdict(set)
+        pair_days = {}
 
         # 3️⃣ Active sliding window PER tweet_id
         active_per_tid = defaultdict(deque)  # tid → deque[(user, ts)]
@@ -64,6 +64,8 @@ class SharedTweetsFastApproach(PairsApproach):
                 # Since we're already processing tid events, we just need:
                 if tid2 in user_tweets[user] and tid in user_tweets[other_user]:
                     pair = tuple(sorted((user, other_user)))
+                    if pair not in pair_days:
+                        pair_days[pair] = set()
                     pair_days[pair].add(day)
 
             dq.append((user, ts, tid))

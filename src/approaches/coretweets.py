@@ -14,7 +14,7 @@ class CoRetweetsApproach(PairsApproach):
     """
 
     def get_approach_name(self) -> str:
-        return "Vol."
+        return "Co-Retweet"
 
     def get_approach_key(self) -> str:
         return "coretweets"
@@ -29,6 +29,7 @@ class CoRetweetsApproach(PairsApproach):
         tweet_data = defaultdict(list)
         for user, tid, ts in RTs:
             tweet_data[tid].append((user, ts))
+        
         # Sort each tweet's retweets chronologically
         for tid in tweet_data:
             tweet_data[tid].sort(key=lambda x: x[1])
@@ -49,7 +50,7 @@ class CoRetweetsApproach(PairsApproach):
         y = {}
 
         # For each tweet, find pairs of users who retweeted within the time window
-        for acc_times in by_tweet.values():
+        for tweet, acc_times in by_tweet.items():
             n = len(acc_times)
             for i in range(n):
                 acc_i, ts_i = acc_times[i]
@@ -61,9 +62,9 @@ class CoRetweetsApproach(PairsApproach):
                     if acc_i != acc_j:
                         pair = tuple(sorted((acc_i, acc_j)))
                         if pair not in y:
-                            y[pair] = 1
+                            y[pair] = {tweet}
                         else:
-                            y[pair] += 1
+                            y[pair].add(tweet)
 
         # Filter pairs with at least min_coactions co-retweets
-        return {k: v for k, v in y.items() if v >= self.min_coactions}
+        return {k: len(v) for k, v in y.items() if len(v) >= self.min_coactions}

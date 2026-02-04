@@ -396,8 +396,9 @@ class PairsApproach(Approach):
         output_dir = kwargs.get('output_dir')
         dataset = kwargs.get('dataset')
         io_users = kwargs.get('io_users')
+        force = kwargs.get('force', False)
 
-        if output_dir and dataset and self.is_result_cached(output_dir, dataset):
+        if output_dir and dataset and self.is_result_cached(output_dir, dataset) and not force:
             try:
                 cached_results = self.load_cached_results(output_dir, dataset)
                 return cached_results.get('suspicious_users', [])

@@ -1,7 +1,7 @@
 """Optimized temporal synchronization ignoring tweet content approach using sliding window."""
 
 from typing import Dict, Tuple, List
-from collections import defaultdict, deque
+from collections import defaultdict
 from .base import PairsApproach
 
 
@@ -31,6 +31,8 @@ class IgnoringTweetFastApproach(PairsApproach):
         """
         Count days users posted within time window using sliding window algorithm.
 
+        Optimized for large datasets with frequent temporal coincidences.
+
         Args:
             RTs: List of (user_id, tweet_id, timestamp) tuples
             **kwargs: Additional parameters (unused for this approach)
@@ -41,46 +43,53 @@ class IgnoringTweetFastApproach(PairsApproach):
         if not RTs:
             return {}
 
-        # Get all unique users
-        unique_users = sorted(set(user for user, _, _ in RTs))
-
         # Sort all events chronologically: O(R log R)
         events = [(ts, user) for user, _, ts in RTs]
         events.sort()
 
         # Active set: users whose last action is within the window
-        active = deque()  # Contains (user, timestamp) tuples
+        # Use dict for O(1) lookup and O(1) removal by user
+        active = {}  # Maps user_id -> timestamp
 
-        # Track unique (pair, day) combinations
-        pair_days = {}
+        # Track unique (pair, day) combinations using defaultdict for efficiency
+        # Maps pair -> day -> count (using int to track occurrences per day)
+        pair_days = defaultdict(lambda: defaultdict(int))
 
+        window_td = None  # Cache for window timedelta to avoid repeated conversion
+        
         # Process events chronologically
         for ts_curr, user_curr in events:
+            # Lazily create timedelta from window_sec (only once)
+            if window_td is None:
+                from datetime import timedelta
+                window_td = timedelta(seconds=self.window_sec)
+            
             # Remove users whose last action is outside the window
-            while active and (ts_curr - active[0][1]).total_seconds() > self.window_sec:
-                active.popleft()
+            # Iterate over a list of keys to avoid "dictionary changed size during iteration"
+            expired_users = [u for u, ts in active.items() if (ts_curr - ts) > window_td]
+            for u in expired_users:
+                del active[u]
 
             # Record day for all pairs with currently active users
             current_day = ts_curr.date()
-            for user_active, ts_active in active:
+            for user_active, ts_active in active.items():
                 # Skip same user (can happen if user posts multiple times)
                 if user_active != user_curr:
                     # Create canonical pair (sorted tuple)
                     pair = tuple(sorted((user_curr, user_active)))
-                    # Add this day to the set of days for this pair
-                    if pair not in pair_days:
-                        pair_days[pair] = set()
-                    pair_days[pair].add(current_day)
+                    # Increment count for this pair on this day
+                    # (use count to avoid repeated set operations)
+                    pair_days[pair][current_day] += 1
 
             # Add current user to active set
-            active.append((user_curr, ts_curr))
+            active[user_curr] = ts_curr
 
-        # Build result dictionary
+        # Build result dictionary: only include pairs meeting min_coactions threshold
         result = {}
-        for i in range(len(unique_users)):
-            for j in range(i + 1, len(unique_users)):
-                pair = (unique_users[i], unique_users[j])
-                if pair in pair_days and len(pair_days[pair]) >= self.min_coactions:
-                    result[pair] = len(pair_days[pair])
+        for pair, days_dict in pair_days.items():
+            num_days = len(days_dict)
+            if num_days >= self.min_coactions:
+                result[pair] = num_days
 
+        #result = dict(sorted(result.items(), key=lambda x: x[1], reverse=True)[:2000])
         return result

@@ -178,7 +178,7 @@ def count_io_until_first_nonio(suspicious_users, io_users):
     Count how many IO users are found before the first non-IO appears.
 
     Traverses users in the given suspicious order (groups preserve ties),
-    skipping duplicates, and stops at the first non-IO.
+    skipping duplicates, and stops at the first non-IO user encountered.
 
     Args:
         suspicious_users: List[List[user_id]] ordered by score groups
@@ -191,7 +191,7 @@ def count_io_until_first_nonio(suspicious_users, io_users):
     for group in suspicious_users:
         for u in group:
             if u not in io_users:
-                return count    # Worst case scenario. If we have users with same score and one of them is non-IO, we stop counting.
+                return count
         count += len(group)
     return count
 
@@ -200,7 +200,7 @@ def users_until_reaching_io_fraction(suspicious_users, io_users, fraction=0.8):
     """
     Return how many users must be studied to reach a fraction of total IOs.
 
-    Uses the ordered suspicious users (deduplicated) and counts how many
+    Uses the ordered suspicious users and counts how many
     need to be examined to detect at least `fraction` of all IO users in the
     dataset. If the threshold is not reached, returns None.
 
@@ -238,3 +238,42 @@ def users_until_reaching_io_fraction(suspicious_users, io_users, fraction=0.8):
                     return studied
 
     return None
+
+
+def count_total_io_in_suspicious(suspicious_users, io_users):
+    """
+    Count total number of IO accounts in the suspicious users list.
+    
+    Args:
+        suspicious_users: List of lists of user IDs grouped by score level
+        io_users: Set of known IO users
+    
+    Returns:
+        Integer count of IO accounts found in suspicious_users
+    """
+    seen = set()
+    count = 0
+    for group in suspicious_users:
+        for u in group:
+            if u not in seen:
+                seen.add(u)
+                if u in io_users:
+                    count += 1
+    return count
+
+
+def count_total_accounts_in_suspicious(suspicious_users):
+    """
+    Count total number of accounts (both IO and non-IO) in the suspicious users list.
+    
+    Args:
+        suspicious_users: List of lists of user IDs grouped by score level
+    
+    Returns:
+        Integer count of total unique accounts in suspicious_users
+    """
+    seen = set()
+    for group in suspicious_users:
+        for u in group:
+            seen.add(u)
+    return len(seen)

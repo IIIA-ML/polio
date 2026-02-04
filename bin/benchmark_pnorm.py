@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Benchmark different Lp-norm ranking modes.
+Benchmark different Lp-norm ranking modes for a given approach.
 
-This script:
-1. Loads results from an experiment with multiple ranking modes
-2. Computes AUC, AP, and NDCG metrics for each Lp-norm
-3. Plots all three metrics in a single figure
-4. X-axis: norm value (1, 2, 3, ..., 10, inf)
-5. Y-axis: mean score across all datasets
+Compares performance across different ranking modes (L1, L2, ..., Linf) by:
+1. Loading results for all ranking mode variants of the specified approach
+2. Computing AUC, AP, and NDCG metrics for each variant
+3. Plotting all three metrics in a single figure with error bars
+4. Saving the plot to {experiment_dir}/analysis/pnorm_benchmark/
+
+Expects the experiment config to contain multiple specs of the same approach
+with different 'ranking_mode' parameters.
 """
 
 import os
@@ -58,7 +60,7 @@ def extract_norm_value(ranking_mode):
         ranking_mode: Ranking mode string (e.g., 'L1', 'L2', 'L10', 'Linf')
     
     Returns:
-        Numeric value for sorting (1, 2, ..., 999 for L1-max, float('inf') for Linf)
+        Numeric value for sorting (int for L<n>, float('inf') for Linf, None otherwise)
     """
     if ranking_mode == 'Linf':
         return float('inf')
@@ -74,12 +76,12 @@ def load_results_by_ranking_mode(results_dir, base_approach_key, approach_specs)
     """
     Load results for a single approach with different ranking modes.
     
-    Uses the same loading mechanism as analyze_results.py, creating approach instances
-    from specs and loading results using load_all_results().
+    Creates approach instances from specs, extracts their ranking_mode,
+    and loads results using load_all_results().
     
     Args:
         results_dir: Path to results directory
-        base_approach_key: Base approach key (e.g., 'coretweets_fast')
+        base_approach_key: Base approach key (unused, kept for compatibility)
         approach_specs: List of approach specs with different ranking modes
     
     Returns:
@@ -149,16 +151,16 @@ def main():
         description="Benchmark different Lp-norm ranking modes",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Example usage:
-  uv run bin/benchmark_pnorm.py experiments/my_experiment.json coretweets_fast
-  uv run bin/benchmark_pnorm.py experiments/my_experiment.json ignoring_tweet_fast
+            Example usage:
+            ./bin/benchmark_pnorm.py experiments/my_experiment.json coretweets_fast
+            ./bin/benchmark_pnorm.py experiments/my_experiment.json ignoring_tweet_fast
 
-The script will:
-1. Load results from the experiment's results directory
-2. Find results for different ranking modes (L1, L2, ..., L10, Linf)
-3. Compute AUC, AP, and NDCG for each norm
-4. Plot all three metrics in a single figure
-5. Save plot to {experiment_dir}/analysis/pnorm_benchmark/
+            The script will:
+            1. Load results from the experiment's results directory
+            2. Find results for different ranking modes (L1, L2, ..., L10, Linf)
+            3. Compute AUC, AP, and NDCG for each norm
+            4. Plot all three metrics in a single figure
+            5. Save plot to {experiment_dir}/analysis/pnorm_benchmark/
         """
     )
     parser.add_argument(
@@ -310,7 +312,7 @@ The script will:
     ax.set_xlabel("Lp-norm (p value)", fontsize=12, fontweight='bold')
     ax.set_ylabel("Mean Score", fontsize=12, fontweight='bold')
     ax.set_title(f"Benchmark: {approach_name} Performance by Lp-norm", 
-                fontsize=14, fontweight='bold')
+                fontsize=14, fontweight='bold', pad=20)
     
     # Set x-axis with equal spacing
     ax.set_xticks(x_positions)
@@ -318,15 +320,18 @@ The script will:
     ax.set_xlim(-0.5, len(x_positions) - 0.5)
     
     # Set y-axis limits
-    ax.set_ylim(0, 1.0)
+    ax.set_ylim(0, 1.05)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(loc='best', fontsize=11, framealpha=0.9)
     
-    # Add value labels on points
+    # Add value labels on points with background for better readability
     for metric in metrics:
         means, _ = zip(*results_data[metric])
         for x, y in zip(x_positions, means):
-            ax.text(x, y + 0.02, f'{y:.3f}', ha='center', va='bottom', fontsize=9)
+            # Add white background box behind text for better visibility
+            ax.text(x, y + 0.035, f'{y:.3f}', 
+                   ha='center', va='bottom', fontsize=8,
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='none', alpha=0.8))
     
     plt.tight_layout()
     

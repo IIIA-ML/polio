@@ -15,6 +15,7 @@ from aeon.visualisation import plot_critical_difference
 
 from .metrics import compute_score
 from .statistics import compute_rankings_with_ties
+from synchronous_repeated_detection import _compute_curve
 
 
 def _clean_approach_name(name: str) -> str:
@@ -81,10 +82,19 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     # Use first method as baseline
     baseline_name = list(methods.keys())[0]
     baseline_suspicious = methods[baseline_name]
+    if baseline_name == "Co-Retweet [Linf] NoFilter": baseline_name = "Co-Retweet"
+    if baseline_name == "Co-Retweet min2 [Linf] NoFilter": baseline_name = "Co-Retweet min2"
 
     # Plot each method vs baseline (except baseline itself)
     plot_idx = 0
     for method_name, suspicious_users in methods.items():
+        if method_name == "Co-Retweet [Linf] NoFilter": method_name = "Co-Retweet"
+        if method_name == "Co-Retweet min2 [Linf] NoFilter": method_name = "Co-Retweet min2"
+        if method_name == "Co-Retweet-Weighted-12h [Linf] NoFilter": method_name = "Co-Retweet-Weighted-12h"
+        if method_name == "Lexicographic: Co-Retweet [Linf]+Co-Retweet-Weighted-12h NoFilter [Linf]": method_name = "Lexic.: Co-Retweet + Co-Retweet-Weighted-12h"
+        if method_name == "Co-Retweet-Weighted-12h min2 [Linf] NoFilter": method_name = "Co-Retweet-Weighted-12h min2"
+        if method_name == "Lexicographic: Co-Retweet min2 [Linf]+Co-Retweet-Weighted-12h min2 NoFilter [Linf]": method_name = "Lexic.: Co-Retweet min2 + Co-Retweet-Weighted-12h min2"
+        
         if method_name == baseline_name:
             continue
 
@@ -96,7 +106,6 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
         # Compute curves
         if compute_curve_func is None:
             # Use default curve computation
-            from synchronous_repeated_detection import _compute_curve
             compute_curve_func = _compute_curve
             
         x1, y1 = compute_curve_func(suspicious_users, io_users)
@@ -130,7 +139,7 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
         textstr = f'Total area diff: {total_area:.2f}\n'
         textstr += f'Negative area: {negative_area:.2f}'
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-        ax.text(0.65, 0.25, textstr, transform=ax.transAxes,
+        ax.text(0.55, 0.25, textstr, transform=ax.transAxes,
                 fontsize=9, verticalalignment='top', bbox=props)
 
         plot_idx += 1
@@ -153,6 +162,128 @@ def plot_method_comparison(dataset_name, dataset_results, approach_keys, approac
     scores = {}
     for name, users in methods.items():
         scores[name] = compute_score(users, io_users, x_max, metric=metric)
+
+    # Compute rankings with proper tie handling
+    rankings = compute_rankings_with_ties(scores)
+
+    # Return rankings for this dataset
+    return rankings
+
+
+def plot_method_comparison_ideal(dataset_name, dataset_results, approach_keys, approach_names, 
+                                output_dir, metric='auc', compute_curve_func=None):
+    """
+    Generate comparison plots for all methods against the ideal detection curve.
+    
+    The ideal curve is defined as y=x until all IO users are detected, then y=max_io (flat).
+    This represents the best possible detection scenario where all IO users are found first.
+
+    Args:
+        dataset_name: Name of the dataset
+        dataset_results: Dictionary of results for each approach
+        approach_keys: List of approach keys in the experiment
+        approach_names: Dictionary mapping approach keys to display names
+        output_dir: Directory to save plots
+        metric: Metric to use for scoring (default: 'auc')
+        compute_curve_func: Function to compute detection curves (x, y) from (suspicious_users, io_users)
+
+    Returns:
+        Dictionary mapping method names to their ranks, or None if plot cannot be generated
+    """
+    # Check if all approaches are available
+    if not all(approach_key in dataset_results for approach_key in approach_keys):
+        print(f"  WARNING: Not all approaches available for {dataset_name}, skipping ideal plot")
+        return None
+
+    # Get IO users from first available approach (should be same across all)
+    first_approach = approach_keys[0]
+    io_users = set(dataset_results[first_approach]['io_users'])
+    total_io_users = len(io_users)
+
+    # Extract suspicious_users for each method
+    methods = {
+        approach_names[approach_key]: dataset_results[approach_key]['suspicious_users']
+        for approach_key in approach_keys
+    }
+
+    # Compute curves for all methods
+    if compute_curve_func is None:
+        compute_curve_func = _compute_curve
+    
+    method_curves = {}
+    for method_name, suspicious_users in methods.items():
+        x, y = compute_curve_func(suspicious_users, io_users)
+        method_curves[method_name] = (x, y, suspicious_users)
+
+    # Determine grid size based on number of approaches
+    n_methods = len(methods)
+    n_plots = n_methods
+
+    # Compute grid: as square as possible
+    n_cols = math.ceil(math.sqrt(n_plots))
+    n_rows = math.ceil(n_plots / n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 5 * n_rows))
+    axes = np.array(axes).flatten()  # make it iterable
+
+    # Plot each method vs ideal
+    plot_idx = 0
+    scores = {}
+    
+    for method_name, (x1, y1, suspicious_users) in method_curves.items():
+        if plot_idx >= len(axes):
+            break
+
+        ax = axes[plot_idx]
+
+        # Get the x_max for this method
+        x_max = len(x1)
+
+        # Create ideal curve for this method's x_max
+        # Ideal: y=x until y=total_io_users, then y=total_io_users (flat)
+        x_ideal = np.arange(x_max)
+        y_ideal = np.minimum(x_ideal, total_io_users)
+
+        # Compute differences
+        diff = y1 - y_ideal
+        total_area = np.sum(diff)
+        negative_area = np.sum(np.minimum(0, diff))
+
+        # Plot
+        ax.plot(x1, y1, label=method_name, linewidth=2)
+        ax.plot(x_ideal, y_ideal, label='Ideal', linewidth=2, linestyle='--', color='green')
+
+        ax.set_xlabel("Number of users studied")
+        ax.set_ylabel("Number of IO users detected")
+        ax.set_title(f'{method_name} vs Ideal')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+        # Add text box with area information
+        textstr = f'Total area diff: {total_area:.2f}\n'
+        textstr += f'Negative area: {negative_area:.2f}'
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+        ax.text(0.65, 0.25, textstr, transform=ax.transAxes,
+                fontsize=9, verticalalignment='top', bbox=props)
+
+        # Compute score for this method
+        scores[method_name] = compute_score(suspicious_users, io_users, x_max, metric=metric)
+
+        plot_idx += 1
+
+    # Hide unused axes
+    for i in range(plot_idx, len(axes)):
+        axes[i].axis('off')
+
+    plt.tight_layout()
+
+    # Save figure with _ideal suffix
+    output_path = Path(output_dir) / f"{dataset_name}_comparison_ideal.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Saved ideal plot: {output_path}")
 
     # Compute rankings with proper tie handling
     rankings = compute_rankings_with_ties(scores)
@@ -224,7 +355,6 @@ def plot_method_comparison_no_truncation(dataset_name, dataset_results, approach
         # Compute curves
         if compute_curve_func is None:
             # Use default curve computation
-            from synchronous_repeated_detection import _compute_curve
             compute_curve_func = _compute_curve
             
         x1, y1 = compute_curve_func(suspicious_users, io_users)
@@ -314,3 +444,67 @@ def plot_critical_difference_diagram(scores_matrix, method_names, output_path, l
     plt.close()
     
     print(f"\nCritical difference diagram saved: {output_path}")
+
+
+def plot_all_approaches_together(dataset_name, dataset_results, approach_keys, approach_names, 
+                                 output_dir, compute_curve_func=None):
+    """
+    Generate a single plot with all approaches together on a dataset WITHOUT area computation.
+    
+    This function plots all approaches' detection curves in the same figure without computing
+    positive or negative areas.
+
+    Args:
+        dataset_name: Name of the dataset
+        dataset_results: Dictionary of results for each approach
+        approach_keys: List of approach keys in the experiment
+        approach_names: Dictionary mapping approach keys to display names
+        output_dir: Directory to save plots
+        compute_curve_func: Function to compute detection curves (x, y) from (suspicious_users, io_users)
+
+    Returns:
+        None
+    """
+    # Check if all approaches are available
+    if not all(approach_key in dataset_results for approach_key in approach_keys):
+        print(f"  WARNING: Not all approaches available for {dataset_name}, skipping plot")
+        return None
+
+    # Get IO users from first available approach
+    first_approach = approach_keys[0]
+    io_users = set(dataset_results[first_approach]['io_users'])
+
+    # Extract suspicious_users for each method
+    methods = {
+        approach_names[approach_key]: dataset_results[approach_key]['suspicious_users']
+        for approach_key in approach_keys
+    }
+
+    # Create single figure
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    # Compute curves
+    if compute_curve_func is None:
+        # Use default curve computation
+        compute_curve_func = _compute_curve
+
+    # Plot each method on the same axis
+    for method_name, suspicious_users in methods.items():
+        x, y = compute_curve_func(suspicious_users, io_users)
+        ax.plot(x, y, label=method_name, linewidth=2, alpha=0.8)
+
+    ax.set_xlabel("Number of users studied")
+    ax.set_ylabel("Number of IO users detected")
+    ax.set_title(f'{dataset_name} - All Approaches')
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='best')
+
+    plt.tight_layout()
+
+    # Save figure
+    output_path = Path(output_dir) / f"{dataset_name}_comparison_toghether.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Saved plot: {output_path}")

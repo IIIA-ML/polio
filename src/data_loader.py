@@ -44,7 +44,23 @@ def load_from_text_files(processed_dir: Path) -> Tuple[List[Tuple], List[int], d
     with open(data_file, "r") as f:
         content = f.readlines()
         io_users = [line.strip() for line in content]
-        io_users = [accountid_to_index[acc] for acc in io_users]
+        # Handle type conversion: account IDs may be stored as strings but need to match
+        # the type in accountid_to_index (which could be int or str)
+        io_users_converted = []
+        for acc in io_users:
+            # Try to find in dictionary, attempting int conversion if the key is not found as string
+            if acc in accountid_to_index:
+                io_users_converted.append(accountid_to_index[acc])
+            else:
+                try:
+                    acc_int = int(acc)
+                    if acc_int in accountid_to_index:
+                        io_users_converted.append(accountid_to_index[acc_int])
+                    else:
+                        raise KeyError(f"Account ID {acc} not found in index mapping")
+                except ValueError:
+                    raise KeyError(f"Account ID {acc} not found in index mapping")
+        io_users = io_users_converted
 
     # Load retweet data: (user_id, tweet_id, timestamp)
     data_file = processed_dir / "RTs.txt"

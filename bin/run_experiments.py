@@ -6,6 +6,11 @@ This script processes datasets and computes detection scores using multiple appr
 Results are stored in pickle files (one per dataset+approach) to avoid reprocessing.
 
 The script accepts a JSON configuration file that specifies all experiment parameters.
+
+Usage:
+    ./bin/run_experiments.py <config.json>      # Run experiments from config
+
+Configuration file format (JSON) example in experiments/
 """
 
 import os
@@ -44,7 +49,7 @@ def process_dataset_approach(dataset: str, approach: Approach,
         data_dir: Directory containing datasets
         output_dir: Directory to save results
         force: Force reprocessing even if results exist
-
+        filter_min_coactions: Minimum coactions to filter suspicious users
     Returns:
         True if processed, False if skipped, None if error/missing
     """
@@ -66,7 +71,8 @@ def process_dataset_approach(dataset: str, approach: Approach,
         dataset=dataset,
         io_users=io_users,
         filter_min_coactions=filter_min_coactions,
-        data_dir=data_dir
+        data_dir=data_dir,
+        force=force,
     )
 
     if not suspicious_users:
@@ -121,43 +127,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run detection experiments on social media datasets using JSON configuration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Example configuration file (experiment.json):
-{
-  "name": "baseline_experiment",
-  "data_dir": "../data",
-  "output_dir": null,
-  "window_sec": 60,
-  "min_coactions": 1,
-  "ranking_mode": "Linf",
-  "datasets": ["Armenia", "Thailand"],
-  "approaches": ["coretweets", "ignoring_tweet_fast"],
-  "force": false
-}
-
-Example with per-approach ranking modes (embedded in approach keys):
-{
-  "name": "compare_ranking_modes",
-  "ranking_mode": "L1",
-  "approaches": [
-    "coretweets[L1]",
-    "coretweets[L2]",
-    "coretweets[Linf]",
-    "lexicographic:coretweets[L1]+ignoring_tweet_fast[Linf]"
-  ],
-  "datasets": ["Armenia"]
-}
-
-Notes:
-- If output_dir is null, an experiment folder will be created in the same directory
-  as the JSON file with structure: {json_dir}/{name}/results/{dataset}/
-- If datasets is null or omitted, all datasets will be processed
-- If approaches is null or omitted, all approaches will be used
-- ranking_mode is a default for approaches without explicit mode in their key
-- Specify ranking mode in approach key: "approach[mode]" or 
-  "lexicographic:approach1[mode1]+approach2[mode2]+..."
-- Examples: "coretweets[L1]", "lexicographic:coretweets[L1]+ignoring_tweet_fast[Linf]"
-        """
+        epilog="""Example configuration file (experiment.json) in experiments/."""
     )
     parser.add_argument(
         'config',
@@ -205,7 +175,7 @@ Notes:
     # All parameters (min_coactions, ranking_mode) are now specified per-approach
     
     if config['approaches'] is not None:
-        approaches = [ApproachFactory.create(key, window_sec, 1, 'L2')
+        approaches = [ApproachFactory.create(key, window_sec)
                      for key in config['approaches']]
     else:
         approaches = ApproachFactory.get_all_approaches(window_sec, 1, 'L2')
