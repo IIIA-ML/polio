@@ -1,0 +1,30 @@
+{
+  "name": "CimaIO_coretweetweighted_rts_filtering",
+  "data_dir": "datasets/CimaIO/RTs",
+  "window_sec": 60,
+  "approaches": [
+    {
+      "name": "coretweets",
+      "ranking_mode": "Linf",
+      "min_coactions": 1
+    },
+    {
+      "name": "coretweets_weighted_12h",
+      "ranking_mode": "Linf",
+      "min_coactions": 1,
+      "need_filtering": false
+    },
+    {
+      "name": "lexicographic",
+      "approaches": ["coretweets", "coretweets_weighted_12h"],
+      "ranking_modes": "Linf",
+      "min_coactions": [1,1],
+      "need_filtering": false
+    }
+  ],
+  "datasets": [
+    "UAE",
+    "Honduras"
+  ],
+  "force": false
+}
