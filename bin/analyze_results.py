@@ -34,6 +34,7 @@ from analysis import (
     compute_rankings_with_ties,
     count_io_until_first_nonio,
     users_until_reaching_io_fraction,
+    precision_k,
     wilcoxon_signed_rank_test,
     friedman_test,
     nemenyi_test,
@@ -62,7 +63,7 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
         ideal_mode: Whether to generate ideal comparison plots
 
     Returns:
-        Tuple of (rankings, scores, first_nonio_counts, users_to_80pct, total_io_counts, total_accounts_counts) or (None, None, None, None, None, None)
+        Tuple of (rankings, scores, first_nonio_counts, users_to_80pct, precision_at_100, precision_at_500, total_io_counts, total_accounts_counts) or (None, None, None, None, None, None, None, None)
     """
     print(f"\nProcessing: {dataset_name}")
 
@@ -107,6 +108,20 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
         for approach_key in approach_keys
     }
 
+    precision_at_100 = {
+        approach_names[approach_key]: precision_k(
+            dataset_results[approach_key]['suspicious_users'], io_users, k=100
+        )
+        for approach_key in approach_keys
+    }
+
+    precision_at_500 = {
+        approach_names[approach_key]: precision_k(
+            dataset_results[approach_key]['suspicious_users'], io_users, k=500
+        )
+        for approach_key in approach_keys
+    }
+
     total_io_counts = {
         approach_names[approach_key]: count_total_io_in_suspicious(
             dataset_results[approach_key]['suspicious_users'], io_users
@@ -142,6 +157,8 @@ def process_dataset(dataset_name, dataset_results, approach_keys, approach_names
         [scores[method] for method in method_names],
         [first_nonio_counts[method] for method in method_names],
         [(users_to_80pct[method] if users_to_80pct[method] is not None else -1) for method in method_names],
+        [precision_at_100[method] for method in method_names],
+        [precision_at_500[method] for method in method_names],
         [total_io_counts[method] for method in method_names],
         [total_accounts_counts[method] for method in method_names]
     )
@@ -516,6 +533,8 @@ def main():
         dataset_names = []
         all_first_nonio_counts = []
         all_users_to_80pct = []
+        all_precision_at_100 = []
+        all_precision_at_500 = []
         all_total_io_counts = []
         all_total_accounts_counts = []
 
@@ -523,7 +542,7 @@ def main():
         plots_dir = general_plots_dir if should_generate_plots else None
 
         for dataset_name, dataset_results in sorted(all_results.items()):
-            rankings, scores, first_nonio, users80, total_io, total_accounts = process_dataset(
+            rankings, scores, first_nonio, users80, precision100, precision500, total_io, total_accounts = process_dataset(
                 dataset_name, dataset_results, approach_storage_keys, approach_names,
                 plots_dir, current_metric, should_generate_plots, ideal_mode=args.ideal
             )
@@ -535,6 +554,8 @@ def main():
             all_scores.append(scores)
             all_first_nonio_counts.append(first_nonio)
             all_users_to_80pct.append(users80)
+            all_precision_at_100.append(precision100)
+            all_precision_at_500.append(precision500)
             all_total_io_counts.append(total_io)
             all_total_accounts_counts.append(total_accounts)
             dataset_names.append(dataset_name)
@@ -576,6 +597,7 @@ def main():
     write_general_summary(
         general_summary_path, config['name'], dataset_names, method_names,
         approach_storage_keys, all_first_nonio_counts, all_users_to_80pct,
+        all_precision_at_100, all_precision_at_500,
         all_total_io_counts, all_total_accounts_counts
     )
 

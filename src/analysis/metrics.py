@@ -277,3 +277,38 @@ def count_total_accounts_in_suspicious(suspicious_users):
         for u in group:
             seen.add(u)
     return len(seen)
+
+
+def precision_k(suspicious_users, io_users, k=100):
+    """
+    Compute precision@k for a suspicious users ranking.
+
+    precision@k = (# IO accounts in the top k positions) / k
+
+    Args:
+        suspicious_users: List[List[user_id]] ordered by score groups
+        io_users: Set of known IO users
+        k: Number of top positions to consider
+
+    Returns:
+        Precision@k as a float in [0, 1]. Returns 0.0 if k <= 0.
+    """
+    if k <= 0:
+        return 0.0
+
+    seen = set()
+    ordered_users = []
+
+    for group in suspicious_users:
+        for u in group:
+            if u in seen:
+                continue
+            ordered_users.append(u)
+            seen.add(u)
+            if len(ordered_users) >= k:
+                break
+        if len(ordered_users) >= k:
+            break
+
+    io_count = sum(1 for u in ordered_users if u in io_users)
+    return float(io_count) / float(k)

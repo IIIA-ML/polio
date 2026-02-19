@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Bootstrap evaluation for experiment configurations.
+Subsampling evaluation for experiment configurations.
 
 For each dataset in a configuration, this script:
 1) Loads RTs and IO users
-2) Bootstraps users by resampling with replacement
-3) Computes approach rankings on each bootstrap subdataset
+2) Randomly samples from all users with replacement
+3) Computes approach rankings on each subsample
 4) Computes metrics (AUC, NDCG, AP) directly (no caching)
 5) Writes per-metric CSVs with approach columns
 6) Computes percentile confidence intervals from CSVs
@@ -27,7 +27,7 @@ import csv
 from pathlib import Path
 from typing import Dict, List, Tuple
 from concurrent.futures import ProcessPoolExecutor
-import multiprocessing as mp
+from multiprocessing import Manager
 
 import numpy as np
 from numpy.random import SeedSequence
@@ -74,51 +74,45 @@ def load_experiment_config(config_path: str) -> dict:
 
     return config
 
-
 def build_user_map(RTs: List[Tuple]) -> Dict:
-    """Map user -> list of (tweet_id, timestamp)."""
-    user_map: Dict = {}
-    for user, tid, ts in RTs:
+    user_map = {}
+    for row in RTs:
+        user = row[0]
         if user not in user_map:
             user_map[user] = []
-        user_map[user].append((tid, ts))
+        # Store the whole row so we don't have to re-create it later
+        user_map[user].append(row) 
     return user_map
 
-
-def bootstrap_resample_users(user_map: Dict, io_users: set, rng: np.random.Generator) -> Tuple[List[Tuple], set]:
-    """Resample users with replacement and rebuild RTs and IO user set."""
-    users = list(user_map.keys())
-    n_users = len(users)
-
-    if n_users == 0:
+def bootstrap_resample_users(users: List, sample_size: int, user_map: Dict, io_users: set, rng: np.random.Generator) -> Tuple[List[Tuple], set]:
+    """Sample from all users randomly with replacement and rebuild RTs and IO user set."""
+    if not users:
         return [], set()
 
-    sampled_users = rng.choice(users, size=n_users, replace=True)
+    sampled_users = rng.choice(users, size=sample_size, replace=True)
+
+    # Delete all repeated users from the sample
+    sampled_users = list(set(sampled_users))
 
     boot_RTs: List[Tuple] = []
-    boot_io_users = set()
+    
+    # Optimized version using set intersection and list extension
+    boot_io_users = set(sampled_users).intersection(io_users)
 
-    for idx, orig_user in enumerate(sampled_users):
-        if orig_user in io_users:
-            boot_io_users.add(orig_user)
-        for tid, ts in user_map[orig_user]:
-            boot_RTs.append((orig_user, tid, ts))
+    # Flattening the lists using a fast list comprehension
+    boot_RTs = [
+        row for u in sampled_users for row in user_map[u]
+    ]
+
     return boot_RTs, boot_io_users
-
 
 def unique_user_count(suspicious_users: List[List[int]]) -> int:
     """Count unique users in suspicious list of lists."""
-    seen = set()
-    for group in suspicious_users:
-        for u in group:
-            seen.add(u)
-    return len(seen)
-
+    return len(set(u for group in suspicious_users for u in group))
 
 def compute_metrics_for_sample(approaches: List[Approach], approach_names: List[str], RTs: List[Tuple], io_users: set, filter_min_coactions: int | None) -> Dict[str, Dict[str, float]]:
     """Compute AUC, NDCG, and AP for one bootstrap sample."""
     suspicious_by_approach = {}
-    x_max_candidates = []
 
     for approach, name in zip(approaches, approach_names):
         suspicious = approach.get_suspicious(
@@ -127,9 +121,9 @@ def compute_metrics_for_sample(approaches: List[Approach], approach_names: List[
             filter_min_coactions=filter_min_coactions,
         )
         suspicious_by_approach[name] = suspicious
-        x_max_candidates.append(unique_user_count(suspicious))
 
-    x_max = min(x_max_candidates) if x_max_candidates else 0
+    u_counts = [len(set(u for group in s for u in group)) for s in list(suspicious_by_approach.values())]
+    x_max = min(u_counts) if u_counts else 0
 
     metrics = {'auc': {}, 'ndcg': {}, 'ap': {}}
     for name in approach_names:
@@ -140,29 +134,29 @@ def compute_metrics_for_sample(approaches: List[Approach], approach_names: List[
 
     return metrics
 
-
-def initialize_metric_csv(csv_path: Path, approach_names: List[str]) -> None:
-    """Initialize CSV with header row (columns = approaches)."""
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(approach_names)
-
-
-def append_metric_row(csv_path: Path, approach_names: List[str], row: Dict[str, float]) -> None:
-    """Append a single metric row to CSV."""
-    with open(csv_path, 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([row[name] for name in approach_names])
-
-
-def bootstrap_worker(bootstrap_idx: int, seed: int, user_map: Dict, io_users: set, approaches: List[Approach], approach_names: List[str], filter_min_coactions: int | None,) -> Tuple[int, Dict[str, Dict[str, float]]]:
-    """Worker function for parallel bootstrap sampling.
+def bootstrap_worker(
+    iteration_idx: int,
+    seed_int: int,
+    sample_size: int,
+    users: List,
+    user_map: Dict,
+    io_users: set,
+    approaches: List[Approach],
+    approach_names: List[str],
+    filter_min_coactions: int | None,
+) -> Dict:
+    """Worker function for one bootstrap iteration.
     
-    Returns: (bootstrap_idx, metrics_dict)
+    Returns results as {metric: {approach_name: value}} for memory efficiency.
     """
-    rng = np.random.default_rng(seed)
-    boot_RTs, boot_io_users = bootstrap_resample_users(user_map, io_users, rng)
+    
+    # Create independent RNG from seed
+    rng = np.random.default_rng(seed_int)
+    
+    # Sample users with replacement and rebuild RTs and IO user set for this bootstrap sample
+    boot_RTs, boot_io_users = bootstrap_resample_users(users, sample_size, user_map, io_users, rng)
+    
+    # Compute metrics
     metrics = compute_metrics_for_sample(
         approaches,
         approach_names,
@@ -170,8 +164,8 @@ def bootstrap_worker(bootstrap_idx: int, seed: int, user_map: Dict, io_users: se
         boot_io_users,
         filter_min_coactions,
     )
-    return bootstrap_idx, metrics
-
+    
+    return {'iteration': iteration_idx, 'metrics': metrics}
 
 def compute_ci_from_csv(csv_path: Path, ci_level: float) -> Dict[str, Tuple[float, float, float]]:
     """Compute percentile CI from CSV. Returns {approach: (mean, low, high)}."""
@@ -199,7 +193,6 @@ def compute_ci_from_csv(csv_path: Path, ci_level: float) -> Dict[str, Tuple[floa
         ci[name] = (mean, low, high)
     return ci
 
-
 def write_ci_report(report_path: Path, metric: str, dataset: str, ci_level: float,
                     ci: Dict[str, Tuple[float, float, float]]) -> None:
     """Write CI report to text file."""
@@ -216,20 +209,23 @@ def write_ci_report(report_path: Path, metric: str, dataset: str, ci_level: floa
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Bootstrap evaluation for experiment configurations",
+        description="Subsampling evaluation (resample all users with replacement) for experiment configurations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
             Example usage:
             uv run bin/bootstrap_experiments.py experiments/my_experiment.json
             uv run bin/bootstrap_experiments.py experiments/my_experiment.json --n-bootstrap 200 --seed 123
+            uv run bin/bootstrap_experiments.py experiments/my_experiment.json --n-bootstrap 200 --workers 8
         """,
     )
     parser.add_argument('config', help='Path to experiment JSON configuration file')
     parser.add_argument('--n-bootstrap', type=int, default=1000,
-                        help='Number of bootstrap samples per dataset (default: 1000)')
+                        help='Number of subsamples (all users with replacement) per dataset (default: 1000)')
     parser.add_argument('--seed', type=int, default=42, help='Random seed (default: 42)')
     parser.add_argument('--ci', type=float, default=95.0,
                         help='Confidence interval level in percent (default: 95)')
+    parser.add_argument('--workers', type=int, default=None,
+                        help='Number of worker processes (default: auto-detect)')
 
     args = parser.parse_args()
 
@@ -266,13 +262,23 @@ def main() -> None:
 
     approach_names = [approach.get_full_approach_name() for approach in approaches]
 
+    # Determine number of workers with memory constraints in mind
+    # Each worker holds large RTs lists and IO sets, so be conservative
+    if args.workers is None:
+        import os
+        cpu_count = os.cpu_count() or 1
+        num_workers = max(1, min(4, cpu_count // 2))  # Conservative: max 4 or half CPU count
+    else:
+        num_workers = args.workers
+
     print("=" * 80)
-    print("BOOTSTRAP EVALUATION")
+    print("SUBSAMPLING EVALUATION (100% of users with replacement)")
     print("=" * 80)
     print(f"Experiment: {config['name']}")
     print(f"Configuration file: {args.config}")
     print(f"Output directory: {output_dir}")
-    print(f"Bootstrap samples: {args.n_bootstrap}")
+    print(f"Number of subsamples: {args.n_bootstrap}")
+    print(f"Number of workers: {num_workers} (conservative for memory efficiency)")
 
     for dataset in config['datasets']:
         print("\n" + "-" * 80)
@@ -286,57 +292,85 @@ def main() -> None:
 
         RTs, io_users = import_data(processed_dir)
         user_map = build_user_map(RTs)
+        print(f"  Total users: {len(user_map)}, IO users: {len(io_users)}")
+        
+        # Pre-compute values used in every bootstrap iteration
+        users = list(user_map.keys())
+        n_users = len(users)
+        sample_size = n_users
+        print(f"  Sampling {sample_size} users per bootstrap iteration")
 
-        # Initialize CSV files with headers
+        # Open CSV files and initialize writers with headers
+        output_dir.mkdir(parents=True, exist_ok=True)
         csv_paths = {}
+        csv_files = {}
+        csv_writers = {}
+        
         for metric in ('auc', 'ndcg', 'ap'):
-            csv_path = output_dir / f"{dataset}_{metric}.csv"
-            initialize_metric_csv(csv_path, approach_names)
+            csv_path = output_dir / f"{dataset}_{metric}_replacement.csv"
             csv_paths[metric] = csv_path
+            csv_files[metric] = open(csv_path, 'w', newline='')
+            csv_writers[metric] = csv.writer(csv_files[metric])
+            csv_writers[metric].writerow(approach_names)
+            csv_files[metric].flush()
 
-        # Generate unique seeds for each bootstrap sample using SeedSequence
+        # Generate independent seeds for each bootstrap iteration using SeedSequence
         ss = SeedSequence(args.seed)
-        child_seeds = ss.spawn(args.n_bootstrap)
-
-        # Parallel bootstrap loop
-        n_workers = mp.cpu_count() - 2 if mp.cpu_count() > 2 else 1
-        print(f"  Using {n_workers} parallel workers for bootstrap sampling")
-        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        seeds = ss.spawn(args.n_bootstrap)
+        # Properly generate independent integer seeds from spawned sequences
+        seed_ints = [s.generate_state(1)[0] for s in seeds]
+        
+        # Run bootstrap iterations in parallel
+        results_by_iteration = {}
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = [
                 executor.submit(
                     bootstrap_worker,
-                    b,
-                    int(child_seeds[b].generate_state(1)[0]),
-                    user_map,
-                    set(io_users),
-                    approaches,
-                    approach_names,
-                    config.get('filter_min_coactions'),
+                    iteration_idx=i,
+                    seed_int=seed_ints[i],
+                    sample_size=sample_size,
+                    users=users,
+                    user_map=user_map,
+                    io_users=io_users,
+                    approaches=approaches,
+                    approach_names=approach_names,
+                    filter_min_coactions=config.get('filter_min_coactions'),
                 )
-                for b in range(args.n_bootstrap)
+                for i in range(args.n_bootstrap)
             ]
-
-            # Process results as they complete and append to CSVs immediately
-            completed = 0
-            for future in futures:
-                bootstrap_idx, metrics = future.result()
-                # Append metrics to each metric CSV immediately (low memory footprint)
-                for metric in ('auc', 'ndcg', 'ap'):
-                    append_metric_row(csv_paths[metric], approach_names, metrics[metric])
-                completed += 1
-                if completed % max(1, args.n_bootstrap // 10) == 0:
-                    print(f"  Completed {completed}/{args.n_bootstrap} samples")
+            
+            try:
+                # Process results as they complete (memory efficient streaming)
+                for completed_future in enumerate(futures):
+                    idx, future = completed_future
+                    result = future.result()
+                    iteration_idx = result['iteration']
+                    metrics = result['metrics']
+                    results_by_iteration[iteration_idx] = metrics
+                    
+                    # Write to CSV using already-open writers and flush immediately
+                    for metric in ('auc', 'ndcg', 'ap'):
+                        csv_writers[metric].writerow([metrics[metric][name] for name in approach_names])
+                        csv_files[metric].flush()  # Force write to disk for real-time streaming
+                    
+                    # Progress update
+                    if (idx + 1) % 100 == 0 or (idx + 1) == args.n_bootstrap:
+                        print(f"  Completed {idx + 1}/{args.n_bootstrap} samples")
+            finally:
+                # Close all CSV files
+                for f in csv_files.values():
+                    f.close()
 
         # Compute confidence intervals from completed CSVs
         for metric in ('auc', 'ndcg', 'ap'):
             print(f"  Saved CSV: {csv_paths[metric]}")
             ci = compute_ci_from_csv(csv_paths[metric], args.ci)
-            report_path = output_dir / f"{dataset}_{metric}_ci.txt"
+            report_path = output_dir / f"{dataset}_{metric}_replacement_ci.txt"
             write_ci_report(report_path, metric, dataset, args.ci, ci)
             print(f"  Saved CI: {report_path}")
 
     print("\n" + "=" * 80)
-    print("BOOTSTRAP COMPLETE")
+    print("SUBSAMPLING COMPLETE")
     print("=" * 80)
 
 

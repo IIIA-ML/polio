@@ -16,17 +16,9 @@ class CoretweetsWeighted2DaysApproach(PairsApproach):
     the same content within a specific time window. Unlike simple counting methods,
     it uses weighted scoring to account for tweet popularity:
 
-    Key intuitions:
-    - If a tweet is extremely popular, many users will naturally retweet it on
-      the same day just by chance (organic diffusion).
-    - If a tweet is not very popular, but two users retweet it at the same time,
-      that coincidence is much harder to explain by chance (likely coordination).
-    - If most of a tweet's retweets happen on a single day, it suggests
-      concentrated amplification effort rather than organic spread.
-
     This method captures these intuitions by weighting co-retweets inversely to
     tweet popularity, rather than simply counting them. The weight for each
-    co-retweet is: (number of retweets of that tweet on that day) / (total 
+    co-retweet is: (number of retweets of that tweet on that day and next one) / (total 
     retweets of that tweet). This downweights co-retweets of viral tweets while
     emphasizing co-retweets of less popular content.
     """
@@ -121,8 +113,15 @@ class CoretweetsWeighted2DaysApproach(PairsApproach):
                     if u1 != u2:
                         pair = tuple(sorted((u1, u2)))
                         # Record: this pair co-retweeted this tweet on this day
-                        date_only = datetime.combine(t1.date(), time.min)
-                        current_day_seconds = np.int32(int(date_only.timestamp()))
+                        date_only_t1 = datetime.combine(t1.date(), time.min)
+                        current_day_seconds_t1 = np.int32(int(date_only_t1.timestamp()))
+                        date_only_t2 = datetime.combine(t2.date(), time.min)
+                        current_day_seconds_t2 = np.int32(int(date_only_t2.timestamp()))
+                        if current_day_seconds_t1 == current_day_seconds_t2:
+                            current_day_seconds = current_day_seconds_t1
+                        else:
+                            current_day_seconds = (current_day_seconds_t1, current_day_seconds_t2)
+
                         pair_days[pair][current_day_seconds].add(tweet)
         
         # STEP 2: Identify synchronized days and tweets
@@ -134,7 +133,11 @@ class CoretweetsWeighted2DaysApproach(PairsApproach):
             # Count total co-retweets (not distinct days, but sum of tweets per day)
             if sum(len(tweetset) for tweetset in days_tweets.values()) >= self.min_coactions:
                 for day, tweets_set in days_tweets.items():
-                    synchronized_days.add(day)
+                    if isinstance(day, tuple):
+                        synchronized_days.add(day[0])
+                        synchronized_days.add(day[1])
+                    else:
+                        synchronized_days.add(day)
                     synchronized_tweets.update(tweets_set)
         
         # STEP 3: Compute popularity baseline for synchronized content
@@ -157,8 +160,13 @@ class CoretweetsWeighted2DaysApproach(PairsApproach):
                         # Viral tweets: weight ~= 1/total (low)
                         # Rare tweets: weight ~= 1/daily ≈ 1/1 or 1/2 (high)
                         # This makes rare co-retweets more significant
-                        next_day = day + 86400
-                        frac_popularity = (date_tweet_popularity[day][tweet] + date_tweet_popularity[next_day][tweet]) / len(tweet_data[tweet])
+                        if isinstance(day, tuple):
+                            next_day_1 = day[0] + 86400
+                            next_day_2 = day[1] + 86400
+                            frac_popularity = (date_tweet_popularity[day[0]][tweet] + date_tweet_popularity[next_day_1][tweet] + date_tweet_popularity[day[1]][tweet] + date_tweet_popularity[next_day_2][tweet]) / (2*len(tweet_data[tweet]))
+                        else:
+                            next_day = day + 86400
+                            frac_popularity = (date_tweet_popularity[day][tweet] + date_tweet_popularity[next_day][tweet]) / len(tweet_data[tweet])
                         #if frac_popularity > 0.9:
                         weight += frac_popularity
 

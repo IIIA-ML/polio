@@ -1,6 +1,6 @@
 {
   "name": "CimaIO_coretweets_vs_weighted_ranking_modes",
-  "data_dir": "data",
+  "data_dir": "datasets/CimaIO/RTs",
   "window_sec": 60,
   "approaches": [
     {

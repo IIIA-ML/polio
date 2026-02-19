@@ -10,23 +10,13 @@ from .base import PairsApproach
 
 class CoretweetsWeighted12hApproach(PairsApproach):
     """
-    Weighted same-tweet, same-time coordination detection.
-
     This approach identifies coordinated behavior by analyzing when users retweet
     the same content within a specific time window. Unlike simple counting methods,
-    it uses weighted scoring to account for tweet popularity:
-
-    Key intuitions:
-    - If a tweet is extremely popular, many users will naturally retweet it on
-      the same day just by chance (organic diffusion).
-    - If a tweet is not very popular, but two users retweet it at the same time,
-      that coincidence is much harder to explain by chance (likely coordination).
-    - If most of a tweet's retweets happen on a single day, it suggests
-      concentrated amplification effort rather than organic spread.
+    it uses weighted scoring to account for tweet popularity at a given period.
 
     This method captures these intuitions by weighting co-retweets inversely to
     tweet popularity, rather than simply counting them. The weight for each
-    co-retweet is: (number of retweets of that tweet on that day) / (total 
+    co-retweet is: (number of retweets of that tweet on that period) / (total 
     retweets of that tweet). This downweights co-retweets of viral tweets while
     emphasizing co-retweets of less popular content.
     """
@@ -110,17 +100,17 @@ class CoretweetsWeighted12hApproach(PairsApproach):
         Algorithm overview:
         1. Group retweets by tweet and sort chronologically
         2. For each tweet, identify pairs of users who retweeted it within the
-           time window, recording which day they coordinated
-        3. Identify "synchronized" days and tweets: pairs with sufficient
-           co-retweets (>= min_coactions threshold) on the same day
+           time window, recording which period they coordinated
+        3. Identify "synchronized" periods and tweets: pairs with sufficient
+           co-retweets (>= min_coactions threshold) on the same period
         4. Compute popularity baseline: how many users retweeted each synchronized
-           tweet on each synchronized day
-        5. Weight each co-retweet by the inverse of tweet popularity on that day:
-           weight = (daily retweets of that tweet) / (total retweets of that tweet)
+           tweet on each synchronized period
+        5. Weight each co-retweet by the inverse of tweet popularity on that period:
+           weight = (period retweets of that tweet) / (total retweets of that tweet)
            
         This weighting scheme ensures:
-        - Viral tweets (many daily retweets) contribute low weight per co-retweet
-        - Rare tweets (few daily retweets) contribute high weight per co-retweet
+        - Viral tweets (many period retweets) contribute low weight per co-retweet
+        - Rare tweets (few period retweets) contribute high weight per co-retweet
         - The approach only considers coordinated pairs meeting min_coactions threshold
 
         Args:
@@ -132,7 +122,7 @@ class CoretweetsWeighted12hApproach(PairsApproach):
             Dictionary mapping user pairs to their weighted coordination scores
         """
         tweet_data = self._group_RTs_by_tweet(RTs)
-        pair_days = defaultdict(lambda: defaultdict(set))
+        pair_periods = defaultdict(lambda: defaultdict(set))
 
         # STEP 1: Find user pairs who co-retweeted within the time window
         # For each tweet, iterate through all retweets chronologically and identify
@@ -148,19 +138,29 @@ class CoretweetsWeighted12hApproach(PairsApproach):
                     if u1 != u2:
                         pair = tuple(sorted((u1, u2)))
                         # Record: this pair co-retweeted this tweet in this 12-hour window
-                        current_window_seconds = self._get_12h_window_timestamp(t1)
-                        pair_days[pair][current_window_seconds].add(tweet)
+                        current_window_seconds_t1 = self._get_12h_window_timestamp(t1)
+                        current_window_seconds_t2 = self._get_12h_window_timestamp(t2)
+                        if current_window_seconds_t1 == current_window_seconds_t2:
+                            current_window_seconds = (current_window_seconds_t1)
+                        else:
+                            current_window_seconds = (current_window_seconds_t1, current_window_seconds_t2)
+
+                        pair_periods[pair][current_window_seconds].add(tweet)
         
-        # STEP 2: Identify synchronized days and tweets
-        # A day is "synchronized" if a pair has >= min_coactions co-retweets on that day
+        # STEP 2: Identify synchronized periods and tweets
+        # A period is "synchronized" if a pair has >= min_coactions co-retweets on that period
         # Pairs below this threshold are filtered out (likely organic sharing)
         synchronized_days = set()
         synchronized_tweets = set()
-        for days_tweets in pair_days.values():
-            # Count total co-retweets (not distinct days, but sum of tweets per day)
+        for days_tweets in pair_periods.values():
+            # Count total co-retweets (not distinct periods, but sum of tweets per period)
             if sum(len(tweetset) for tweetset in days_tweets.values()) >= self.min_coactions:
                 for day, tweets_set in days_tweets.items():
-                    synchronized_days.add(day)
+                    if isinstance(day, tuple):
+                        synchronized_days.add(day[0])
+                        synchronized_days.add(day[1])
+                    else:
+                        synchronized_days.add(day)
                     synchronized_tweets.update(tweets_set)
         
         # STEP 3: Compute popularity baseline for synchronized content
@@ -173,18 +173,20 @@ class CoretweetsWeighted12hApproach(PairsApproach):
         
         # Build result dictionary: only include pairs meeting min_coactions threshold
         result = {}
-        for pair, days_tweets in pair_days.items():
+        for pair, days_tweets in pair_periods.items():
             weight = 0
             # Only score pairs with sufficient coordinated co-retweets
             if sum(len(tweetset) for tweetset in days_tweets.values()) >= self.min_coactions:
                 for day, tweets_set in days_tweets.items():
                     for tweet in tweets_set:
-                        # Weight = daily tweet retweets / total tweet retweets
+                        # Weight = period tweet retweets / total tweet retweets
                         # Viral tweets: weight ~= 1/total (low)
                         # Rare tweets: weight ~= 1/daily ≈ 1/1 or 1/2 (high)
                         # This makes rare co-retweets more significant
-                        frac_popularity = date_tweet_popularity[day][tweet] / len(tweet_data[tweet])
-                        #if frac_popularity > 0.9:
+                        if isinstance(day, tuple):
+                            frac_popularity = (date_tweet_popularity[day[0]][tweet] + date_tweet_popularity[day[1]][tweet]) / (2*len(tweet_data[tweet]))
+                        else:
+                            frac_popularity = date_tweet_popularity[day][tweet] / len(tweet_data[tweet])
                         weight += frac_popularity
 
                 if weight > 0:    

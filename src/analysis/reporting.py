@@ -139,6 +139,7 @@ def write_metric_summary(summary_path, metric_display, dataset_names, method_nam
 
 def write_general_summary(summary_path, experiment_name, dataset_names, method_names,
                          approach_keys, all_first_nonio_counts, all_users_to_80pct,
+                         all_precision_at_100, all_precision_at_500,
                          all_total_io_counts, all_total_accounts_counts):
     """
     Write general summary report with metric-independent information.
@@ -151,6 +152,8 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         approach_keys: List of approach keys
         all_first_nonio_counts: 2D array of IO counts until first non-IO
         all_users_to_80pct: 2D array of users needed to reach 80% IO
+        all_precision_at_100: 2D array of precision@100 values
+        all_precision_at_500: 2D array of precision@500 values
         all_total_io_counts: 2D array of total IO accounts found
         all_total_accounts_counts: 2D array of total accounts (IO+non-IO) found
     """
@@ -223,6 +226,42 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         def fmt_mean(v):
             return "NA" if v == -1 else f"{v:.2f}"
         f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>{col_width}}" for val in avg_users_80pct]) + "\n")
+
+        f.write("\n\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("PRECISION@100 (P@100)\n")
+        f.write("=" * 70 + "\n\n")
+
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        for dataset, row in zip(dataset_names, all_precision_at_100):
+            f.write(f"{dataset:<20} " + " ".join([f"{val:>{col_width}.4f}" for val in row]) + "\n")
+        
+        precision_100_matrix = np.array(all_precision_at_100)
+        avg_precision_100 = np.mean(precision_100_matrix, axis=0)
+        
+        f.write("\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{val:>{col_width}.4f}" for val in avg_precision_100]) + "\n")
+
+        f.write("\n\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("PRECISION@500 (P@500)\n")
+        f.write("=" * 70 + "\n\n")
+
+        header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
+        f.write(header + "\n")
+        f.write("-" * len(header) + "\n")
+        for dataset, row in zip(dataset_names, all_precision_at_500):
+            f.write(f"{dataset:<20} " + " ".join([f"{val:>{col_width}.4f}" for val in row]) + "\n")
+        
+        precision_500_matrix = np.array(all_precision_at_500)
+        avg_precision_500 = np.mean(precision_500_matrix, axis=0)
+        
+        f.write("\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{val:>{col_width}.4f}" for val in avg_precision_500]) + "\n")
 
         f.write("\n\n")
 

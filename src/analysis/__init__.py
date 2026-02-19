@@ -15,6 +15,7 @@ from .metrics import (
     compute_roc_auc,
     count_io_until_first_nonio,
     users_until_reaching_io_fraction,
+    precision_k,
     count_total_io_in_suspicious,
     count_total_accounts_in_suspicious,
 )
@@ -45,6 +46,7 @@ __all__ = [
     'compute_roc_auc',
     'count_io_until_first_nonio',
     'users_until_reaching_io_fraction',
+    'precision_k',
     'count_total_io_in_suspicious',
     'count_total_accounts_in_suspicious',
     # Statistics

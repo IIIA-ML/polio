@@ -10,19 +10,9 @@ from .base import PairsApproach
 
 class CoretweetsWeighted1DayApproach(PairsApproach):
     """
-    Weighted same-tweet, same-time coordination detection.
-
     This approach identifies coordinated behavior by analyzing when users retweet
     the same content within a specific time window. Unlike simple counting methods,
     it uses weighted scoring to account for tweet popularity:
-
-    Key intuitions:
-    - If a tweet is extremely popular, many users will naturally retweet it on
-      the same day just by chance (organic diffusion).
-    - If a tweet is not very popular, but two users retweet it at the same time,
-      that coincidence is much harder to explain by chance (likely coordination).
-    - If most of a tweet's retweets happen on a single day, it suggests
-      concentrated amplification effort rather than organic spread.
 
     This method captures these intuitions by weighting co-retweets inversely to
     tweet popularity, rather than simply counting them. The weight for each
@@ -120,9 +110,17 @@ class CoretweetsWeighted1DayApproach(PairsApproach):
                         break
                     if u1 != u2:
                         pair = tuple(sorted((u1, u2)))
+                        
                         # Record: this pair co-retweeted this tweet on this day
-                        date_only = datetime.combine(t1.date(), time.min)
-                        current_day_seconds = np.int32(int(date_only.timestamp()))
+                        date_only_t1 = datetime.combine(t1.date(), time.min)
+                        date_only_t2 = datetime.combine(t2.date(), time.min)
+                        current_day_seconds_t1 = np.int32(int(date_only_t1.timestamp()))
+                        current_day_seconds_t2 = np.int32(int(date_only_t2.timestamp()))
+                        if current_day_seconds_t1 == current_day_seconds_t2:
+                            current_day_seconds = current_day_seconds_t1
+                        else:
+                            current_day_seconds = (current_day_seconds_t1, current_day_seconds_t2)
+
                         pair_days[pair][current_day_seconds].add(tweet)
         
         # STEP 2: Identify synchronized days and tweets
@@ -134,7 +132,11 @@ class CoretweetsWeighted1DayApproach(PairsApproach):
             # Count total co-retweets (not distinct days, but sum of tweets per day)
             if sum(len(tweetset) for tweetset in days_tweets.values()) >= self.min_coactions:
                 for day, tweets_set in days_tweets.items():
-                    synchronized_days.add(day)
+                    if isinstance(day, tuple):
+                        synchronized_days.add(day[0])
+                        synchronized_days.add(day[1])
+                    else:
+                        synchronized_days.add(day)
                     synchronized_tweets.update(tweets_set)
         
         # STEP 3: Compute popularity baseline for synchronized content
@@ -157,7 +159,10 @@ class CoretweetsWeighted1DayApproach(PairsApproach):
                         # Viral tweets: weight ~= 1/total (low)
                         # Rare tweets: weight ~= 1/daily ≈ 1/1 or 1/2 (high)
                         # This makes rare co-retweets more significant
-                        frac_popularity = date_tweet_popularity[day][tweet] / len(tweet_data[tweet])
+                        if isinstance(day, tuple):
+                            frac_popularity = (date_tweet_popularity[day[0]][tweet] + date_tweet_popularity[day[1]][tweet]) / (2*len(tweet_data[tweet]))
+                        else:
+                            frac_popularity = date_tweet_popularity[day][tweet] / len(tweet_data[tweet])
                         #if frac_popularity > 0.9:
                         weight += frac_popularity
 
