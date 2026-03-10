@@ -1,6 +1,6 @@
 # Detecting Coordination in Information Operations Campaigns
 
-This repository contains research code for detecting coordinated behavior in IO campaigns on Twitter/X through different approaches (e.g., weighted co-retweets). Using labeled datasets from the ["Coordinated Behavior in Information Operations on Twitter"](https://ieeexplore.ieee.org/abstract/document/10508551) article, we present improvements for the co-retweets feature for identifying users engaged in coordinated campaigns, consisting of weighting each co-retweet.
+This repository contains research code for detecting coordinated behavior in IO campaigns on Twitter/X through different approaches (e.g., weighted co-retweets). Using labeled datasets from the ["Coordinated Behavior in Information Operations on Twitter"](https://ieeexplore.ieee.org/abstract/document/10508551) article, accessible in ["url"](https://zenodo.org/doi/10.5281/zenodo.10619747), we present improvements for the co-retweets feature for identifying users engaged in coordinated campaigns, consisting of weighting each co-retweet.
 
 ## Repository Structure
 
@@ -53,7 +53,7 @@ Contains command-line tools for the entire workflow: data generation, experiment
 - **`data_loader.py`**: Loads filtered datasets when running experiments with `run_experiments.py`
 
 ### `experiments/` - Experiment Configurations
-JSON files defining experiment scenarios, comparing different approaches on Cima datasets.
+JSON files defining experiment scenarios, comparing different approaches on Cima datasets. This file also specifies the folder where the datasets has been stored.
 
 ## Prerequisites
 
@@ -95,7 +95,7 @@ APPROACHES = {
 Extract retweets, tweets, and other features from raw data (e.g., Cima anonymized JSONL):
 
 ```bash
-./bin/generate_RTs_files.py
+uv run bin/generate_RTs_files.py
 ```
 
 This script calls [src/extractors.py](src/extractors.py) to generate filtered datasets in the appropriate format.
@@ -116,8 +116,8 @@ Create an experiment JSON file in `experiments/`. This defines:
 **Important**: Different ranking modes (L1, L2,..., Linf) aggregate scores differently. To determine the optimal metric for your use case, first run an experiment comparing different ranking modes. For example:
 
 ```bash
-./bin/run_experiments.py experiments/CimaIO_coretweetweighted_ranking_modes.json
-./bin/benchmark_pnorm.py experiments/CimaIO_coretweetweighted_ranking_modes.json <approach_name>
+uv run bin/run_experiments.py experiments/CimaIO_coretweetweighted_ranking_modes.json
+uv run bin/benchmark_pnorm.py experiments/CimaIO_coretweetweighted_ranking_modes.json <approach_name>
 ```
 
 This benchmarks metrics (AUC, AP, NDCG) across all datasets to help you choose the best aggregation mode.
@@ -150,7 +150,7 @@ This benchmarks metrics (AUC, AP, NDCG) across all datasets to help you choose t
 Execute the experiment across all specified datasets and approaches:
 
 ```bash
-./bin/run_experiments.py experiments/my_experiment.json
+uv run bin/run_experiments.py experiments/my_experiment.json
 ```
 
 Results are saved to `experiments/my_experiment/results/`.
@@ -163,20 +163,20 @@ Generate metrics, statistical tests, and visualizations:
 
 ```bash
 # Analyze all metrics
-./bin/analyze_results.py experiments/my_experiment.json --metric all
+uv run bin/analyze_results.py experiments/my_experiment.json --metric all
 
 # Analyze specific metric
-./bin/analyze_results.py experiments/my_experiment.json --metric AUC
+uv run bin/analyze_results.py experiments/my_experiment.json --metric AUC
 
 # Skip plot generation
-./bin/analyze_results.py experiments/my_experiment.json --no-plots
+uv run bin/analyze_results.py experiments/my_experiment.json --no-plots
 
 # Generate plots without truncation (used when one approach is not based
 # on co-retweets and end up with bigger suspicious users cohort)
-./bin/analyze_results.py experiments/my_experiment.json --notruncation
+uv run bin/analyze_results.py experiments/my_experiment.json --notruncation
 
 # Compare approach results with ideal (catching all IO users first)
-./bin/analyze_results.py experiments/my_experiment.json --ideal
+uv run bin/analyze_results.py experiments/my_experiment.json --ideal
 ```
 
 **Statistical Tests** (need a lot of datasets):
@@ -188,7 +188,7 @@ Generate metrics, statistical tests, and visualizations:
 Plot multiple experiment results together:
 
 ```bash
-./bin/plot_multiple_results_toghether.py experiments/my_experiment.json
+uv run bin/plot_multiple_results_toghether.py experiments/my_experiment.json
 ```
 
 ### 6. Bootstrap Analysis (Optional)
@@ -196,7 +196,7 @@ Plot multiple experiment results together:
 For limited datasets, perform bootstrap resampling to compute confidence intervals (95% quantile) for metrics (AUC, AP, NDCG):
 
 ```bash
-./bin/bootstrap_experiments.py experiments/my_experiment.json
+uv run bin/bootstrap_experiments.py experiments/my_experiment.json
 ```
 
 This replaces users in the retweet data and computes confidence intervals across bootstrap samples.
@@ -205,25 +205,25 @@ This replaces users in the retweet data and computes confidence intervals across
 
 ```bash
 # 1. Generate datasets from Cima anonymized data
-./bin/generate_RTs_files.py
+uv run bin/generate_RTs_files.py
 
 # 2. Compare ranking modes to find optimal metric
-./bin/run_experiments.py experiments/Ranking_modes_experiment.json
-./bin/benchmark_pnorm.py experiments/Ranking_modes_experiment.json coretweets_weighted_1day
+uv run bin/run_experiments.py experiments/Ranking_modes_experiment.json
+uv run bin/benchmark_pnorm.py experiments/Ranking_modes_experiment.json coretweets_weighted_1day
 
 # 3. Define and run main experiment
-./bin/run_experiments.py experiments/my_experiment.json
+uv run bin/run_experiments.py experiments/my_experiment.json
 
 # 4. Analyze results
-./bin/analyze_results.py experiments/my_experiment.json --metric all
+uv run bin/analyze_results.py experiments/my_experiment.json --metric all
 
 # 5. (Optional) Bootstrap for confidence intervals
-./bin/bootstrap_experiments.py experiments/my_experiment.json
+uv run bin/bootstrap_experiments.py experiments/my_experiment.json
 ```
 
 ## Additional Tools
 
 - [count_io_users.py](bin/count_io_users.py): Analyze IO user distribution with different filtering thresholds
-- [compare_datasets.ipynb](bin/compare_datasets.ipynb): Interactive dataset comparison notebook (Cima vs Seckin)
+- [compare_datasets.ipynb](bin/compare_datasets.ipynb): Interactive dataset comparison notebook (Cima vs Seckin). Need both datasets downloaded.
 - [convert_to_pickle.py](bin/convert_to_pickle.py): Convert filtered datasets to pickle format for faster loading (done automatically when running an experiment)
 ```
