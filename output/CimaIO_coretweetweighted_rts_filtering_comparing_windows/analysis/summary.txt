@@ -1,0 +1,63 @@
+======================================================================
+EXPERIMENT RESULTS ANALYSIS - GENERAL SUMMARY
+======================================================================
+
+Experiment: CimaIO_coretweetweighted_rts_filtering_comparing_windows
+Number of datasets: 2
+Methods compared: 3
+
+Methods:
+  1. Co-Retweet-Weighted-1day [Linf] NoFilter (coretweets_weighted_1day_Linf_nofilter)
+  2. Co-Retweet-Weighted-12h [Linf] NoFilter (coretweets_weighted_12h_Linf_nofilter)
+  3. Co-Retweet-Weighted-2days [Linf] NoFilter (coretweets_weighted_2days_Linf_nofilter)
+
+Datasets:
+  1. Honduras
+  2. UAE
+
+======================================================================
+IO UNTIL FIRST NON-IO (Counts)
+======================================================================
+
+Dataset                 Co-Retweet-Weighted-1day [Linf] NoFilter     Co-Retweet-Weighted-12h [Linf] NoFilter   Co-Retweet-Weighted-2days [Linf] NoFilter
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                     121                                         156                                          73
+UAE                                                            2                                           2                                           2
+
+Mean                                                       61.50                                       79.00                                       37.50
+
+
+======================================================================
+USERS UNTIL 80% IO FOUND
+======================================================================
+
+Dataset                 Co-Retweet-Weighted-1day [Linf] NoFilter     Co-Retweet-Weighted-12h [Linf] NoFilter   Co-Retweet-Weighted-2days [Linf] NoFilter
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                    1921                                        1822                                        2163
+UAE                                                        11087                                        7368                                       21037
+
+Mean                                                     6504.00                                     4595.00                                    11600.00
+
+
+======================================================================
+TOTAL IO ACCOUNTS FOUND
+======================================================================
+
+Dataset                 Co-Retweet-Weighted-1day [Linf] NoFilter     Co-Retweet-Weighted-12h [Linf] NoFilter   Co-Retweet-Weighted-2days [Linf] NoFilter
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                    1610                                        1610                                        1610
+UAE                                                         1651                                        1651                                        1651
+
+Mean                                                     1630.50                                     1630.50                                     1630.50
+
+
+======================================================================
+TOTAL ACCOUNTS FOUND (IO + Non-IO)
+======================================================================
+
+Dataset                 Co-Retweet-Weighted-1day [Linf] NoFilter     Co-Retweet-Weighted-12h [Linf] NoFilter   Co-Retweet-Weighted-2days [Linf] NoFilter
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                  137340                                      137340                                      137340
+UAE                                                       229217                                      229217                                      229217
+
+Mean                                                   183278.50                                   183278.50                                   183278.50

@@ -37,6 +37,12 @@ polio/
 │   └── synchronous_repeated_detection.py     # Main detection library
 ├── experiments/                              # Experiment configurations and results
 │   └── CimaIO_coretweetweighted_ranking_modes.json  # Example: comparing metrics
+├── output/                                   # Outputs for the experiments results and plots
+│   └── CimaIO_coretweetweighted_rts_filtering/  # Example for an experiment output
+│       └── analysis/
+│           ├── plots/<plot>.png              # Cumulative IO Discovery Plot and Bootstrap Plots
+│           ├── <metric>/summary.txt          # Results for each metric specified AUC, AP, NDCG
+│           └── summary.txt                   # General evaluations (ED, P@100, P@500, Filtering Concentration)
 ├── pyproject.toml                            # Project dependencies
 └── README.md
 ```
@@ -90,6 +96,19 @@ APPROACHES = {
 
 ## Workflow
 
+### 1. Store Raw Datasets
+
+Once you download the datasets you want to analyze, store it in the correspondant folder. 
+Datasets from ["Coordinated Behavior in Information Operations on Twitter"](https://ieeexplore.ieee.org/abstract/document/10508551) article store them in the folder `datasets/CimaIO/`:
+```
+  datasets/CimaIO/Honduras/honduras-bad-anonymized.jsonl
+```
+
+If you want to compare with the datasets presented in the ["Labeled Datasets for Research on Information Operations"](https://ojs.aaai.org/index.php/ICWSM/article/view/35958) article, available in ["url"](https://zenodo.org/doi/10.5281/zenodo.14141549), place them in folder `datasets/`, for example:
+```
+  datasets/Catalonia/Catalonia_part_1.gzip.parquet
+```
+
 ### 1. Generate Filtered Datasets
 
 Extract retweets, tweets, and other features from raw data (e.g., Cima anonymized JSONL):
@@ -127,6 +146,7 @@ This benchmarks metrics (AUC, AP, NDCG) across all datasets to help you choose t
 {
   "name": "my_experiment",
   "data_dir": "datasets/CimaIO/RTs/",
+  "output_dir": "output/",
   "window_sec": 60,
   "approaches": [
     {

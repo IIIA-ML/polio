@@ -1,0 +1,54 @@
+======================================================================
+EXPERIMENT RESULTS ANALYSIS SUMMARY (AP)
+======================================================================
+
+Metric: AP
+Number of datasets: 2
+Methods compared: 3
+
+======================================================================
+AP SCORES MATRIX
+======================================================================
+
+Dataset                                                              Co-Retweet [Linf] NoFilter                                    Co-Retweet-Weighted-12h [Linf] NoFilter   Lexicographic: Co-Retweet [Linf]+Co-Retweet-Weighted-12h NoFilter [Linf]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                                                 0.8789                                                                     0.9096                                                                     0.8962
+UAE                                                                                      0.3349                                                                     0.4542                                                                     0.3967
+
+Average AP                                                                               0.6069                                                                     0.6819                                                                     0.6464
+
+
+======================================================================
+RANKINGS MATRIX
+======================================================================
+
+Dataset                                                              Co-Retweet [Linf] NoFilter                                    Co-Retweet-Weighted-12h [Linf] NoFilter   Lexicographic: Co-Retweet [Linf]+Co-Retweet-Weighted-12h NoFilter [Linf]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Honduras                                                                                      3                                                                          1                                                                          2
+UAE                                                                                           3                                                                          1                                                                          2
+
+Average Rank                                                                               3.00                                                                       1.00                                                                       2.00
+
+
+======================================================================
+STATISTICAL TESTS
+======================================================================
+
+Friedman Test:
+  Chi-square: 4.0000
+  P-value: 0.135335
+  Significant: No
+
+Nemenyi Post-hoc Test:
+  Critical Difference: 3.3145
+
+  Pairwise P-values:
+  (p-value < 0.05 indicates significant difference)
+
+                                                                                                                                     Co-Retweet [Linf] NoFilter                                    Co-Retweet-Weighted-12h [Linf] NoFilter   Lexicographic: Co-Retweet [Linf]+Co-Retweet-Weighted-12h NoFilter [Linf]
+  Co-Retweet [Linf] NoFilter                                                                                                                              1.000                                                                     0.1122                                                                     0.5768 
+  Co-Retweet-Weighted-12h [Linf] NoFilter                                                                                                                0.1122                                                                      1.000                                                                     0.5768 
+  Lexicographic: Co-Retweet [Linf]+Co-Retweet-Weighted-12h NoFilter [Linf]                                                                               0.5768                                                                     0.5768                                                                      1.000 
+
+  Significant differences (p < 0.05):
+    No significant pairwise differences found

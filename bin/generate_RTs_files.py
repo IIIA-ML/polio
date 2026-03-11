@@ -278,7 +278,7 @@ if __name__ == "__main__":
     
     # Process CimaIO datasets
     process_cimiao_dataset(region="Honduras", data_type="RTs", extractor=RetweetExtractor())
-    #process_cimiao_dataset(region="UAE", data_type="RTs", extractor=RetweetExtractor())
+    process_cimiao_dataset(region="UAE", data_type="RTs", extractor=RetweetExtractor())
     
     # ========================================================================
     # To add new datasets or extractors:

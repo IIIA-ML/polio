@@ -1,6 +1,7 @@
 {
   "name": "CimaIO_coretweetweighted_rts_min2_filtering",
   "data_dir": "datasets/CimaIO/RTs",
+  "output_dir": "output/",
   "window_sec": 60,
   "approaches": [
     {
