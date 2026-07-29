@@ -28,7 +28,7 @@ Mean                                                                            
 
 
 ======================================================================
-USERS UNTIL 80% IO FOUND
+USERS UNTIL 90% IO FOUND
 ======================================================================
 
 Dataset                                                                   Co-Retweet min2 [Linf] NoFilter                                         Co-Retweet-Weighted-12h min2 [Linf] NoFilter   Lexicographic: Co-Retweet min2 [Linf]+Co-Retweet-Weighted-12h min2 NoFilter [Linf]

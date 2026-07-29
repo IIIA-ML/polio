@@ -196,7 +196,7 @@ def count_io_until_first_nonio(suspicious_users, io_users):
     return count
 
 
-def users_until_reaching_io_fraction(suspicious_users, io_users, fraction=0.8):
+def users_until_reaching_io_fraction(suspicious_users, io_users, fraction=0.9):
     """
     Return how many users must be studied to reach a fraction of total IOs.
 
@@ -207,7 +207,7 @@ def users_until_reaching_io_fraction(suspicious_users, io_users, fraction=0.8):
     Args:
         suspicious_users: List[List[user_id]] ordered by score groups
         io_users: Set of known IO users
-        fraction: Target fraction (e.g., 0.8 for 80%)
+        fraction: Target fraction (e.g., 0.9 for 90%)
 
     Returns:
         Integer number of users studied to reach the target IO fraction, or None if not reached.

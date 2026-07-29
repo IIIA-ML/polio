@@ -138,7 +138,7 @@ def write_metric_summary(summary_path, metric_display, dataset_names, method_nam
 
 
 def write_general_summary(summary_path, experiment_name, dataset_names, method_names,
-                         approach_keys, all_first_nonio_counts, all_users_to_80pct,
+                         approach_keys, all_first_nonio_counts, all_users_to_90pct,
                          all_precision_at_100, all_precision_at_500,
                          all_total_io_counts, all_total_accounts_counts):
     """
@@ -151,7 +151,7 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         method_names: List of method names
         approach_keys: List of approach keys
         all_first_nonio_counts: 2D array of IO counts until first non-IO
-        all_users_to_80pct: 2D array of users needed to reach 80% IO
+        all_users_to_90pct: 2D array of users needed to reach 90% IO
         all_precision_at_100: 2D array of precision@100 values
         all_precision_at_500: 2D array of precision@500 values
         all_total_io_counts: 2D array of total IO accounts found
@@ -199,33 +199,33 @@ def write_general_summary(summary_path, experiment_name, dataset_names, method_n
         f.write("\n\n")
 
         f.write("=" * 70 + "\n")
-        f.write("USERS UNTIL 80% IO FOUND\n")
+        f.write("USERS UNTIL 90% IO FOUND\n")
         f.write("=" * 70 + "\n\n")
 
         header = f"{'Dataset':<20} " + " ".join([f"{m:>{col_width}}" for m in method_names])
         f.write(header + "\n")
         f.write("-" * len(header) + "\n")
-        for dataset, row in zip(dataset_names, all_users_to_80pct):
+        for dataset, row in zip(dataset_names, all_users_to_90pct):
             # Values are ints or -1 when not reached
             def fmt(v):
                 return "NA" if v == -1 else str(v)
             f.write(f"{dataset:<20} " + " ".join([f"{fmt(v):>{col_width}}" for v in row]) + "\n")
         
-        # Compute and write mean for users until 80% IO found (excluding NA values)
-        users_80pct_matrix = np.array(all_users_to_80pct)
-        avg_users_80pct = []
+        # Compute and write mean for users until 90% IO found (excluding NA values)
+        users_90pct_matrix = np.array(all_users_to_90pct)
+        avg_users_90pct = []
         for method_idx in range(len(method_names)):
             # Get values for this method, excluding -1 (NA) values
-            valid_values = [val for val in users_80pct_matrix[:, method_idx] if val != -1]
+            valid_values = [val for val in users_90pct_matrix[:, method_idx] if val != -1]
             if valid_values:
-                avg_users_80pct.append(np.mean(valid_values))
+                avg_users_90pct.append(np.mean(valid_values))
             else:
-                avg_users_80pct.append(-1)  # All were NA
+                avg_users_90pct.append(-1)  # All were NA
         
         f.write("\n")
         def fmt_mean(v):
             return "NA" if v == -1 else f"{v:.2f}"
-        f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>{col_width}}" for val in avg_users_80pct]) + "\n")
+        f.write(f"{'Mean':<20} " + " ".join([f"{fmt_mean(val):>{col_width}}" for val in avg_users_90pct]) + "\n")
 
         f.write("\n\n")
 

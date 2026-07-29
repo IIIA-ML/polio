@@ -299,7 +299,7 @@ def main():
     
     for metric in metrics:
         means, stds = zip(*results_data[metric])
-        ax.errorbar(x_positions, means, yerr=stds, 
+        ax.errorbar(x_positions, means, #yerr=stds, 
                    label=metric.upper(), 
                    color=colors[metric],
                    marker=markers[metric],
