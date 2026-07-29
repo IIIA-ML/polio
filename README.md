@@ -43,6 +43,8 @@ polio/
 │           ├── plots/<plot>.png              # Cumulative IO Discovery Plot and Bootstrap Plots
 │           ├── <metric>/summary.txt          # Results for each metric specified AUC, AP, NDCG
 │           └── summary.txt                   # General evaluations (ED, P@100, P@500, Filtering Concentration)
+├── nb/
+│   └── plot_CI_significance_test.ipynb       # CI bootstrap with Bonferrony adjustment plot
 ├── pyproject.toml                            # Project dependencies
 └── README.md
 ```
@@ -220,6 +222,9 @@ uv run bin/bootstrap_experiments.py experiments/my_experiment.json
 ```
 
 This replaces users in the retweet data and computes confidence intervals across bootstrap samples.
+
+In order to generate the plot provided in the article, run the notebook `nb/plot_CI_significance_test.py`
+
 
 ## Complete Example Workflow
 
