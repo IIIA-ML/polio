@@ -16,7 +16,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
             How to run:
-            ./plot_multiple_results_toghether.py experiments/my_experiment.json
+            ./bin/plot_multiple_results_toghether.py experiments/my_experiment.json
 
             This loads the experiment configuration from the JSON file and generates plots
             comparing all approaches in the results directory.
