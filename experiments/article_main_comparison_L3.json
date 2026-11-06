@@ -1,0 +1,64 @@
+{
+  "name": "article_main_comparison_L3",
+  "data_dir": "datasets/CimaIO/RTs",
+  "output_dir": "output/",
+  "window_sec": 60,
+  "min_coactions": [
+    1,
+    2
+  ],
+  "need_filtering": false,
+  "datasets": [
+    "UAE",
+    "Honduras"
+  ],
+  "force": false,
+  "approaches": [
+    {
+      "name": "coretweets_weighted_12h",
+      "ranking_mode": "L3"
+    },
+    {
+      "name": "coretweets",
+      "ranking_mode": "L3"
+    },
+    {
+      "name": "coretweets_idf",
+      "ranking_mode": "L3"
+    },
+    {
+      "name": "lexicographic",
+      "approaches": [
+        "coretweets",
+        "coretweets_weighted_12h"
+      ],
+      "ranking_modes": "L3"
+    }
+  ],
+  "analysis": {
+    "n_boot": 1000,
+    "seed": 0,
+    "ci_level": 0.95,
+    "jackknife_groups": 20,
+    "extra_comparisons": [
+      [
+        {
+          "name": "lexicographic",
+          "approaches": [
+            "coretweets",
+            "coretweets_weighted_12h"
+          ],
+          "ranking_modes": "L3"
+        },
+        {
+          "name": "coretweets",
+          "ranking_mode": "L3"
+        }
+      ]
+    ],
+    "area_baseline": {
+      "name": "coretweets",
+      "ranking_mode": "L3"
+    }
+  }
+}

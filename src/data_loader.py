@@ -6,13 +6,13 @@ pickle caching for improved performance.
 """
 
 import ast
-import pickle
 import datetime
+import pickle
+import re
 from pathlib import Path
-from typing import Tuple, List
 
 
-def load_from_text_files(processed_dir: Path) -> Tuple[List[Tuple], List[int], dict]:
+def load_from_text_files(processed_dir: Path) -> tuple[list[tuple], list[int], dict]:
     """
     Load dataset from text files (original format).
 
@@ -59,20 +59,46 @@ def load_from_text_files(processed_dir: Path) -> Tuple[List[Tuple], List[int], d
                     else:
                         raise KeyError(f"Account ID {acc} not found in index mapping")
                 except ValueError:
-                    raise KeyError(f"Account ID {acc} not found in index mapping")
+                    raise KeyError(f"Account ID {acc} not found in index mapping") from None
         io_users = io_users_converted
 
     # Load retweet data: (user_id, tweet_id, timestamp)
-    data_file = processed_dir / "RTs.txt"
-    with open(data_file, "r") as f:
-        content = f.readlines()
-        dict_str = content[0].split('=', 1)[1].strip()
-        RTs = eval(dict_str, {"datetime": datetime})
+    RTs = parse_events_file(processed_dir / "RTs.txt")
 
     return RTs, io_users, index_to_accountid
 
 
-def save_to_pickle_cache(processed_dir: Path, RTs: List[Tuple], io_users: List[int],
+# One event of an events file written by bin/generate_RTs_files.py: (int, int, datetime.datetime(...))
+_EVENT = re.compile(r"\((-?\d+), (-?\d+), datetime\.datetime\(([^()]*)\)\)")
+_UTC = "tzinfo=datetime.timezone.utc"
+
+
+def parse_events_file(data_file: Path) -> list[tuple]:
+    """
+    Events of a file 'label=[(account, object, datetime.datetime(...)), ...]', parsed tuple by tuple.
+
+    Evaluating the whole list with eval() builds a syntax tree of the full file, which exhausts the
+    memory on the largest datasets (2.1 million events with exact times). Files with another format
+    fall back to eval(); the number of parsed events is checked against the number of tuples.
+    """
+    text = Path(data_file).read_text()
+    body = text.split('=', 1)[1].strip()
+    events = []
+    for m in _EVENT.finditer(body):
+        args = [a.strip() for a in m.group(3).split(',')]
+        tz = None
+        if args and args[-1].startswith('tzinfo='):
+            if args[-1] != _UTC:
+                return eval(body, {"datetime": datetime})
+            tz = datetime.timezone.utc
+            args = args[:-1]
+        events.append((int(m.group(1)), int(m.group(2)), datetime.datetime(*map(int, args), tzinfo=tz)))
+    if len(events) != body.count('datetime.datetime('):
+        return eval(body, {"datetime": datetime})
+    return events
+
+
+def save_to_pickle_cache(processed_dir: Path, RTs: list[tuple], io_users: list[int],
                          index_to_accountid: dict) -> None:
     """
     Save dataset to pickle cache file.
@@ -97,7 +123,7 @@ def save_to_pickle_cache(processed_dir: Path, RTs: List[Tuple], io_users: List[i
         }, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def load_from_pickle_cache(processed_dir: Path) -> Tuple[List[Tuple], List[int]]:
+def load_from_pickle_cache(processed_dir: Path) -> tuple[list[tuple], list[int]]:
     """
     Load dataset from pickle cache file.
 
@@ -152,12 +178,9 @@ def is_cache_valid(processed_dir: Path) -> bool:
     return cache_time >= newest_source
 
 
-def import_data(processed_dir, use_cache=True, force_reload=False) -> Tuple[List[Tuple], List[int]]:
+def import_data(processed_dir, use_cache=True, force_reload=False) -> tuple[list[tuple], list[int]]:
     """
-    Load dataset with automatic pickle caching.
-
-    This is the main entry point for loading datasets. It automatically
-    handles caching for optimal performance.
+    Load a dataset, from its pickle cache (data_cache.pkl) when it is newer than the text files.
 
     Args:
         processed_dir: Directory containing processed dataset files
@@ -168,14 +191,6 @@ def import_data(processed_dir, use_cache=True, force_reload=False) -> Tuple[List
         Tuple of (RTs, io_users):
         - RTs: List of (user_id, tweet_id, timestamp) tuples
         - io_users: List of inauthentic operation user IDs
-
-    Performance:
-        - First load (text): ~slow (uses eval())
-        - Cached load (pickle): ~10-100x faster
-
-    Example:
-        >>> RTs, io_users = import_data("../data/Armenia/Processed/")
-        >>> print(f"Loaded {len(RTs)} retweets")
     """
     processed_dir = Path(processed_dir)
 

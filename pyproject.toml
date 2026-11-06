@@ -2,20 +2,18 @@
 name = "polio"
 version = "0.1.0"
 description = "Detection of coordinated inauthentic behavior through synchronous repeated actions analysis"
-readme = "CLAUDE.md"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.20.0",
+    "pandas>=2.3.0",
     "matplotlib>=3.3.0",
-    "torch>=2.0.0",
     "jupyter>=1.0.0",
     "ipykernel>=6.0.0",
     "scipy>=1.10.1",
-    "scikit-posthocs>=0.7.0",
-    "aeon>=0.9.0",
     "scikit-learn>=1.7.2",
     "pyarrow>=22.0.0",
-    "bootci>=1.0.1",
+    "mpmath>=1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -29,15 +27,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/synchronous_repeated_detection.py", "src/data_loader.py", "src/approaches"]
+packages = ["src/approaches", "src/analysis", "src/baselines", "src/data_loader.py", "src/extractors.py"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py312"
+extend-exclude = ["archive"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
-ignore = ["E501"]  # Line too long (handled by formatter)
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B905", "UP015", "UP017"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["analysis", "approaches", "baselines", "data_loader", "extractors"]

@@ -1,0 +1,87 @@
+{
+  "name": "article_main_comparison_Linf",
+  "data_dir": "datasets/CimaIO/RTs",
+  "output_dir": "output/",
+  "window_sec": 60,
+  "min_coactions": [
+    1,
+    2
+  ],
+  "need_filtering": false,
+  "datasets": [
+    "UAE",
+    "Honduras"
+  ],
+  "force": false,
+  "approaches": [
+    {
+      "name": "coretweets_weighted_12h",
+      "ranking_mode": "Linf"
+    },
+    {
+      "name": "coretweets",
+      "ranking_mode": "Linf"
+    },
+    {
+      "name": "coretweets_idf",
+      "ranking_mode": "Linf"
+    },
+    {
+      "name": "lexicographic",
+      "approaches": [
+        "coretweets",
+        "coretweets_weighted_12h"
+      ],
+      "ranking_modes": "Linf"
+    }
+  ],
+  "analysis": {
+    "n_boot": 1000,
+    "seed": 0,
+    "ci_level": 0.95,
+    "jackknife_groups": 20,
+    "extra_comparisons": [
+      [
+        {
+          "name": "lexicographic",
+          "approaches": [
+            "coretweets",
+            "coretweets_weighted_12h"
+          ],
+          "ranking_modes": "Linf"
+        },
+        {
+          "name": "coretweets",
+          "ranking_mode": "Linf"
+        }
+      ]
+    ],
+    "area_baseline": {
+      "name": "coretweets",
+      "ranking_mode": "Linf"
+    },
+    "supplementary_approaches": [
+      {
+        "name": "coretweets_inv_m",
+        "ranking_mode": "Linf"
+      }
+    ],
+    "idf_aggregations": [
+      "L1",
+      "L2",
+      "L3",
+      "L6",
+      "L8",
+      "L10",
+      "L20",
+      "Linf",
+      "max",
+      "min",
+      "TM25",
+      "MH",
+      "Q90",
+      "Linf_droptop",
+      "Linf_dropbottom"
+    ]
+  }
+}

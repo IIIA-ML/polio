@@ -1,16 +1,17 @@
 """Extractors for interaction datasets.
 
-Strategies to extract (account_id, object_id, timestamp) triples from various data formats (retweets, tweets, hashtags, etc.).
+Strategies to extract (account_id, object_id, timestamp) triples from various data formats (retweets, tweets,
+hashtags, etc.).
 """
 
-import ast
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 # Type aliases
-RawEvent = Tuple[Any, Any, Any]  # (account, object, timestamp) triple
+RawEvent = tuple[Any, Any, Any]  # (account, object, timestamp) triple
 
 
 class BaseExtractor(ABC):
@@ -19,17 +20,26 @@ class BaseExtractor(ABC):
     name = "base"
 
     @abstractmethod
-    def extract(self, dataset_type: str, row: Dict[str, Any]) -> Iterable[RawEvent]:
+    def extract(self, dataset_type: str, row: dict[str, Any]) -> Iterable[RawEvent]:
         """Extract events from a single row.
-        
+
         Args:
             dataset_type: Type of dataset ('twitter' or 'anonymized')
             row: A single row/record from the dataset
-            
+
         Returns:
             Iterable of (account_id, object_id, timestamp) tuples
         """
         raise NotImplementedError
+
+
+# Twitter Snowflake IDs: (id >> 22) + TWITTER_EPOCH_MS is the creation time in milliseconds
+TWITTER_EPOCH_MS = 1288834974657
+
+
+def snowflake_time(tweet_id: int) -> datetime:
+    """Creation time (UTC) encoded in a Twitter Snowflake ID."""
+    return datetime.fromtimestamp(((int(tweet_id) >> 22) + TWITTER_EPOCH_MS) / 1000.0, tz=timezone.utc)
 
 
 class RetweetExtractor(BaseExtractor):
@@ -45,7 +55,7 @@ class RetweetExtractor(BaseExtractor):
         """Parse CimaIO timestamp format (milliseconds since epoch)."""
         return datetime.fromtimestamp(ts_millis / 1000.0, tz=timezone.utc)
 
-    def extract(self, dataset_type: str, row: Dict[str, Any]) -> Iterable[RawEvent]:
+    def extract(self, dataset_type: str, row: dict[str, Any]) -> Iterable[RawEvent]:
         """Extract retweet events from a row."""
         if dataset_type == "anonymized":
             if not row.get("is_repost"):
@@ -55,8 +65,12 @@ class RetweetExtractor(BaseExtractor):
         if dataset_type == "CimaIO":
             if row["retweet_tweetid"] is None:
                 return []
-
-            ts = self._parse_ts_cimaio(row["tweet_time"])
+            # tweet_time is truncated to the minute; the exact retweet time is decoded from the
+            # Snowflake ID of the retweet (tweetid), and must fall inside the recorded minute
+            recorded = self._parse_ts_cimaio(row["tweet_time"])
+            ts = snowflake_time(row["tweetid"])
+            if not 0 <= (ts - recorded).total_seconds() < 60:
+                raise ValueError(f"tweetid {row['tweetid']} is not in its recorded minute {recorded}")
             return [(row["userid"], row["retweet_tweetid"], ts)]
 
         if dataset_type == "twitter":
@@ -87,9 +101,9 @@ class HashtagExtractor(BaseExtractor):
         """Parse CimaIO timestamp format (milliseconds since epoch)."""
         return datetime.fromtimestamp(ts_millis / 1000.0, tz=timezone.utc)
 
-    def extract(self, dataset_type: str, row: Dict[str, Any]) -> Iterable[RawEvent]:
+    def extract(self, dataset_type: str, row: dict[str, Any]) -> Iterable[RawEvent]:
         """Extract hashtag events from a row."""
-        events: List[RawEvent] = []
+        events: list[RawEvent] = []
 
         if dataset_type == "anonymized":
             if row.get("is_repost"):
@@ -123,7 +137,7 @@ class HashtagExtractor(BaseExtractor):
             ts = self._parse_ts_twitter(ts) if isinstance(ts, str) else ts
             author_id = row.get("author_id")
 
-            normalized_hashtags: List[Any] = []
+            normalized_hashtags: list[Any] = []
             if isinstance(raw_hashtags, list):
                 for ht in raw_hashtags:
                     if isinstance(ht, dict):
@@ -157,41 +171,41 @@ class SameContentExtractor(BaseExtractor):
 
     def _process_text(self, text: str) -> str:
         """Process text by lowercasing, removing @mentions, and standardizing whitespaces.
-        
+
         Args:
             text: Raw text to process
-            
+
         Returns:
             Processed text string
         """
         if not text:
             return ""
-        
+
         # Convert to lowercase
         text = text.lower()
-        
+
         # Remove @mentions
         text = re.sub(r'@\w+', '', text)
-        
+
         # Standardize whitespaces (replace multiple spaces with single space and strip)
         text = re.sub(r'\s+', ' ', text).strip()
-        
+
         return text
 
-    def extract(self, dataset_type: str, row: Dict[str, Any]) -> Iterable[RawEvent]:
+    def extract(self, dataset_type: str, row: dict[str, Any]) -> Iterable[RawEvent]:
         """Extract same content events from a row."""
-        events: List[RawEvent] = []
+        events: list[RawEvent] = []
 
         if dataset_type == "anonymized":
             # Skip retweets
             if row.get("is_repost"):
                 return events
-            
+
             # Get and process the post text
             post_text = row.get("post_text")
             if not post_text:
                 return events
-            
+
             processed_text = self._process_text(post_text)
             if processed_text:
                 events.append((row["accountid"], processed_text, row["post_time"]))
@@ -201,12 +215,12 @@ class SameContentExtractor(BaseExtractor):
             # Skip retweets
             if row.get("retweet_tweetid"):
                 return events
-            
+
             # Get and process the tweet text
             text = row.get("tweet_text")
             if not text:
                 return events
-            
+
             processed_text = self._process_text(text)
             if processed_text:
                 ts = self._parse_ts_cimaio(row["tweet_time"])
@@ -220,12 +234,12 @@ class SameContentExtractor(BaseExtractor):
                 first = ref[0]
                 if first.get("type") == "retweeted":
                     return events
-            
+
             # Get and process the tweet text
             text = row.get("text")
             if not text:
                 return events
-            
+
             processed_text = self._process_text(text)
             if processed_text:
                 ts = row.get("created_at")
